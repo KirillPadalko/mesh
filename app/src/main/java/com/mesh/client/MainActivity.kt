@@ -41,12 +41,26 @@ class MainActivity : ComponentActivity() {
     
     private fun handleIntent(intent: Intent?, viewModel: MeshViewModel) {
         if (intent?.action == Intent.ACTION_VIEW) {
-            val data = intent.data
-            if (data?.scheme == "mesh" && data.host == "invite") {
-                // Path is /<peerId>
-                val peerId = data.path?.substring(1) // remove leading /
-                if (!peerId.isNullOrBlank()) {
-                    viewModel.handleInvite(peerId)
+            val data = intent.data ?: return
+            
+            when {
+                // Handle mesh://invite/{meshId} deep link
+                data.scheme == "mesh" && data.host == "invite" -> {
+                    val meshId = data.path?.substring(1) // remove leading /
+                    if (!meshId.isNullOrBlank()) {
+                        viewModel.handleInvite(meshId)
+                    }
+                }
+                // Handle http(s)://server/invite/{meshId}?v={version} universal link
+                (data.scheme == "http" || data.scheme == "https") && 
+                data.path?.startsWith("/invite/") == true -> {
+                    val pathSegments = data.pathSegments
+                    if (pathSegments.size >= 2 && pathSegments[0] == "invite") {
+                        val meshId = pathSegments[1]
+                        if (meshId.isNotBlank()) {
+                            viewModel.handleInvite(meshId)
+                        }
+                    }
                 }
             }
         }

@@ -25,7 +25,7 @@ fun HomeScreen(
     val contacts by viewModel.contacts.collectAsState()
     val meshId by viewModel.meshId.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    // var showAddDialog by remember { mutableStateOf(false) } // Removed for now
+    var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -39,20 +39,31 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    val link = "mesh://invite/$meshId"
-                    val sendIntent: android.content.Intent = android.content.Intent().apply {
-                        action = android.content.Intent.ACTION_SEND
-                        putExtra(android.content.Intent.EXTRA_TEXT, "Join me on Mesh! Click to connect: $link")
-                        type = "text/plain"
-                    }
-                    val shareIntent = android.content.Intent.createChooser(sendIntent, "Invite via")
-                    context.startActivity(shareIntent)
-                },
-                icon = { Icon(Icons.Default.Share, contentDescription = "Invite Friend") },
-                text = { Text("Invite Friend") }
-            )
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                FloatingActionButton(
+                    onClick = { showAddDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Contact")
+                }
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        // Generate server-based invite link with version
+                        val serverUrl = com.mesh.client.BuildConfig.SERVER_URL.replace("ws://", "http://")
+                        val appVersion = com.mesh.client.BuildConfig.VERSION_NAME
+                        val link = "$serverUrl/invite/$meshId?v=$appVersion"
+                        val sendIntent: android.content.Intent = android.content.Intent().apply {
+                            action = android.content.Intent.ACTION_SEND
+                            putExtra(android.content.Intent.EXTRA_TEXT, "Join me on Mesh! Click to connect: $link")
+                            type = "text/plain"
+                        }
+                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Invite via")
+                        context.startActivity(shareIntent)
+                    },
+                    icon = { Icon(Icons.Default.Share, contentDescription = "Invite Friend") },
+                    text = { Text("Invite Friend") }
+                )
+            }
         }
     ) { padding ->
         LazyColumn(modifier = Modifier.padding(padding)) {
@@ -76,10 +87,29 @@ fun HomeScreen(
         }
     }
     
-    // Add Dialog hidden/removed per request
-    /*
-    if (showAddDialog) { ... }
-    */
+    if (showAddDialog) {
+        AddContactDialog(
+            onDismiss = { showAddDialog = false },
+            onAdd = { id, nick ->
+                viewModel.addContact(id, nick)
+                showAddDialog = false
+            },
+            onInvite = {
+                showAddDialog = false
+                // Generate server-based invite link with version
+                val serverUrl = com.mesh.client.BuildConfig.SERVER_URL.replace("ws://", "http://")
+                val appVersion = com.mesh.client.BuildConfig.VERSION_NAME
+                val link = "$serverUrl/invite/$meshId?v=$appVersion"
+                val sendIntent: android.content.Intent = android.content.Intent().apply {
+                    action = android.content.Intent.ACTION_SEND
+                    putExtra(android.content.Intent.EXTRA_TEXT, "Join me on Mesh! Click to connect: $link")
+                    type = "text/plain"
+                }
+                val shareIntent = android.content.Intent.createChooser(sendIntent, "Invite via")
+                context.startActivity(shareIntent)
+            }
+        )
+    }
 }
 
 @Composable

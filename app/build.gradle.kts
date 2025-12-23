@@ -11,8 +11,11 @@ android {
         applicationId = "com.mesh.client"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
+
+        buildConfigField("String", "VERSION_NAME", "\"${versionName}\"")
+        buildConfigField("String", "SERVER_URL", "\"ws://10.0.2.2:8080\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -35,9 +38,10 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.4"
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
     packaging {
         resources {

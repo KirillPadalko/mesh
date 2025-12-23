@@ -30,3 +30,12 @@ data class ServerMessage(
     @SerializedName("to") val to: String,
     @SerializedName("payload") val payload: String // Base64 of serialized EncryptedMessage
 )
+
+/**
+ * Decrypted payload wrapper to distinguish content types.
+ * This is what gets encrypted inside EncryptedMessage.
+ */
+data class ProtocolPayload(
+    @SerializedName("type") val type: String, // "chat", "invite", "invite_ack", "l2_notify", "l2_notify_ack"
+    @SerializedName("content") val content: String // JSON payload or plain text
+)

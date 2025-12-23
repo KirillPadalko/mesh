@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mesh.client.crypto.CryptoManager
+import com.mesh.client.data.InviteRedemptionManager
 import com.mesh.client.data.LocalStorage
 import com.mesh.client.data.MeshGraphManager
 import com.mesh.client.identity.IdentityManager
@@ -23,6 +24,12 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
     // Core Components
     val identityManager = IdentityManager(context)
     val graphManager = MeshGraphManager(context)
+    private val cryptoManager = CryptoManager(identityManager)
+    
+    // Invite System
+    private val signer = com.mesh.client.crypto.MeshSigner(identityManager) // Assuming structure, or direct usage
+    private val inviteManager = com.mesh.client.data.InviteManager(identityManager, signer, graphManager)
+    private val inviteRedemptionManager = InviteRedemptionManager(context)
     
     // Lazy initialization for network components since they need Identity to be ready
     private var _chatTransport: ChatTransport? = null
@@ -64,6 +71,9 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
                  _l1Items.value = graphManager.getL1Connections()
                  _l2Items.value = graphManager.getL2Connections()
                  startServices()
+                 
+                 // Process pending invite if exists
+                 processPendingInvite()
              } else {
                  _meshId.value = null
              }
@@ -125,6 +135,43 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
                 newMap[peerId] = isP2P
                 _p2pStatus.value = newMap
             }
+            
+            override fun onInviteReceived(fromMeshId: String, inviteJson: String) {
+                viewModelScope.launch {
+                    val invite = com.google.gson.Gson().fromJson(inviteJson, com.mesh.client.data.protocol.Invite::class.java)
+                    val ack = inviteManager.processInvite(invite)
+                    if (ack != null) {
+                        Log.i("MeshViewModel", "Valid invite from $fromMeshId. Sending ACK.")
+                        // Auto-accept and reply with ACK
+                        val ackJson = com.google.gson.Gson().toJson(ack)
+                        transport.sendInviteAck(fromMeshId, ackJson)
+                        
+                        // Add L1 connection
+                        graphManager.addL1Connection(fromMeshId)
+                        // Update UI
+                        _l1Items.value = graphManager.getL1Connections()
+                        _meshScore.value = graphManager.getMeshScore()
+                        ensureContact(fromMeshId)
+                    } else {
+                        Log.w("MeshViewModel", "Invalid invite from $fromMeshId")
+                    }
+                }
+            }
+
+            override fun onInviteAckReceived(fromMeshId: String, ackJson: String) {
+               viewModelScope.launch {
+                   val ack = com.google.gson.Gson().fromJson(ackJson, com.mesh.client.data.protocol.InviteAck::class.java)
+                   Log.i("MeshViewModel", "Received Invite ACK from ${ack.from} (Peer: $fromMeshId)")
+                   graphManager.addL1Connection(fromMeshId)
+                   _l1Items.value = graphManager.getL1Connections()
+                   _meshScore.value = graphManager.getMeshScore()
+                   ensureContact(fromMeshId)
+               }
+            }
+
+            override fun onL2NotifyReceived(fromMeshId: String, notifyJson: String) {
+                // Future L2 implementation
+            }
         }
         
         wsService.connect()
@@ -172,13 +219,76 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    fun handleInvite(peerId: String) {
-        val myId = _meshId.value ?: return
-        if (peerId == myId) return // Cannot invite self
+    fun handleInvite(inviterMeshId: String) {
+        val myId = _meshId.value
+        
+        // If no identity yet, store as pending
+        if (myId == null) {
+            inviteRedemptionManager.storePendingInvite(inviterMeshId)
+            return
+        }
+        
+        // Don't invite self
+        if (inviterMeshId == myId) return
+        
+        // Check if already processed
+        if (inviteRedemptionManager.isInviteProcessed(inviterMeshId)) {
+            Log.d("MeshViewModel", "Invite from $inviterMeshId already processed")
+            return
+        }
         
         // Add as contact if not exists
-        if (contacts.value.none { it.meshId == peerId }) {
-            addContact(peerId, "User ${peerId.take(4)}")
+        if (contacts.value.none { it.meshId == inviterMeshId }) {
+            addContact(inviterMeshId, "User ${inviterMeshId.take(4)}")
+        }
+        
+        // Mark as processed
+        inviteRedemptionManager.markInviteProcessed(inviterMeshId)
+        
+        // --- L1 Protocol Integration ---
+        // We are the new user (B). We redeem a link from A.
+        // Actually, the INVITE message flow is usually: A sends Invite -> B.
+        // But with Deep Link: B has the link, clicks it. A doesn't know B yet.
+        // So B initiates connection to A.
+        // Protocol Choice: 
+        // 1. B connects to A.
+        // 2. B sends "Request Invite"? Or B sends a Self-Signed "Reverse Invite"?
+        // Standard flow: A -> Invite -> B.
+        // In deep link: B has the keys.
+        // Let's assume the deep link implies A *wants* to invite B.
+        // So B sends a "Hello" or, simpler:
+        // B creates an Invite for A? No, hierarchy.
+        
+        // REVISED FLOW for Deep Link:
+        // 1. B connects to A.
+        // 2. B generates an INVITE from B->A (B invites A). Mutual?
+        // Let's stick to symmetrical graph. "Invite" is just a handshake.
+        // B sends Invite(from=B, to=A)
+        // A receives, validates, sends ACK.
+        // A adds B. B adds A (on ACK or immediately).
+        
+        Log.i("MeshViewModel", "Initiating L1 Protocol with $inviterMeshId")
+        viewModelScope.launch {
+             val invite = inviteManager.createInvite(inviterMeshId)
+             val inviteJson = com.google.gson.Gson().toJson(invite)
+             // We need to wait for transport to be ready potentially? 
+             // Ideally we have transport if services started.
+             // If P2P not ready, goes via server (which is fine).
+             _chatTransport?.sendInvite(inviterMeshId, inviteJson)
+             
+             // Optimistically add contact
+             graphManager.addL1Connection(inviterMeshId)
+             _l1Items.value = graphManager.getL1Connections()
+             _meshScore.value = graphManager.getMeshScore()
+        }
+    }
+    
+    private fun processPendingInvite() {
+        val pendingInvite = inviteRedemptionManager.getPendingInvite()
+        if (pendingInvite != null) {
+            Log.i("MeshViewModel", "Processing pending invite from $pendingInvite")
+            handleInvite(pendingInvite)
+            inviteRedemptionManager.clearPendingInvite()
         }
     }
 
