@@ -1,0 +1,50 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Soft outer glow for the network elements -->
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.9  0 0 0 0 0.9  0 0 0 0.5 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Subtle gradient for background to give depth -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a2a2a"/>
+      <stop offset="100%" stop-color="#151515"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle Background -->
+  <rect x="0" y="0" width="512" height="512" rx="115" ry="115" fill="url(#bgGradient)"/>
+
+  <!-- Abstract Network Symbol -->
+  <g transform="translate(256, 256)" filter="url(#softGlow)">
+    
+    <!-- Lines (Connections) -->
+    <!-- Connection 1: Top-Right (Longer) -->
+    <line x1="0" y1="0" x2="60" y2="-45" stroke="#e0e0e0" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="60" cy="-45" r="5" fill="#e0e0e0"/>
+
+    <!-- Connection 2: Left (Medium) -->
+    <line x1="0" y1="0" x2="-55" y2="10" stroke="#e0e0e0" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="-55" cy="10" r="5" fill="#e0e0e0"/>
+
+    <!-- Connection 3: Bottom (Short) -->
+    <line x1="0" y1="0" x2="15" y2="70" stroke="#e0e0e0" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="15" cy="70" r="5" fill="#e0e0e0"/>
+
+    <!-- Connection 4: Top-Left (Short/Angled) -->
+    <line x1="0" y1="0" x2="-35" y2="-55" stroke="#e0e0e0" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="-35" cy="-55" r="5" fill="#e0e0e0"/>
+
+    <!-- Connection 5: Bottom-Right (Medium) -->
+    <line x1="0" y1="0" x2="50" y2="35" stroke="#e0e0e0" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="50" cy="35" r="5" fill="#e0e0e0"/>
+
+    <!-- Central Node -->
+    <circle cx="0" cy="0" r="14" fill="#ffffff"/>
+  </g>
+</svg>

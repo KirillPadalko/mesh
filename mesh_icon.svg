@@ -1,0 +1,36 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background with squircle shape -->
+  <rect width="512" height="512" rx="115" fill="#1a1a1a"/>
+  
+  <!-- Network node symbol -->
+  <g transform="translate(256, 256)" filter="url(#glow)">
+    <!-- Central node (small circle) -->
+    <circle cx="0" cy="0" r="8" fill="#e0e0e0" opacity="0.95"/>
+    
+    <!-- Connection 1: top-right (asymmetric) -->
+    <line x1="0" y1="0" x2="48" y2="-35" stroke="#e0e0e0" stroke-width="2.5" opacity="0.85" stroke-linecap="round"/>
+    <circle cx="48" cy="-35" r="6" fill="#e0e0e0" opacity="0.8"/>
+    
+    <!-- Connection 2: left (asymmetric) -->
+    <line x1="0" y1="0" x2="-55" y2="-8" stroke="#e0e0e0" stroke-width="2.5" opacity="0.85" stroke-linecap="round"/>
+    <circle cx="-55" cy="-8" r="6" fill="#e0e0e0" opacity="0.8"/>
+    
+    <!-- Connection 3: bottom-right (asymmetric) -->
+    <line x1="0" y1="0" x2="38" y2="52" stroke="#e0e0e0" stroke-width="2.5" opacity="0.85" stroke-linecap="round"/>
+    <circle cx="38" cy="52" r="6" fill="#e0e0e0" opacity="0.8"/>
+    
+    <!-- Connection 4: bottom-left (asymmetric) -->
+    <line x1="0" y1="0" x2="-32" y2="45" stroke="#e0e0e0" stroke-width="2.5" opacity="0.85" stroke-linecap="round"/>
+    <circle cx="-32" cy="45" r="6" fill="#e0e0e0" opacity="0.8"/>
+  </g>
+</svg>
