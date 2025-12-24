@@ -74,22 +74,33 @@ class ChatTransport(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error sending protocol message", e)
+            messageListener?.onTransportError("Failed to send message: ${e.localizedMessage}")
         }
     }
 
     // WebSocketService.Listener
     override fun onSignalingMessage(fromMeshId: String, type: String, payload: String?) {
-        if (type == "error") {
-             Log.e(TAG, "Server Error: Peer $fromMeshId might be offline. Details: $payload")
-             // TODO: Propagate to UI via callback
-             // For now, log is sufficient for debugging "Silence"
-             return
+        try {
+            if (type == "error") {
+                val errorMsg = payload ?: "Unknown error"
+                Log.e(TAG, "Server error: $errorMsg")
+                messageListener?.onTransportError("Server error from $fromMeshId: $errorMsg")
+                return
+            }
+            webRtcManager.handleSignaling(fromMeshId, type, payload)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling signaling", e)
+            messageListener?.onTransportError("Error handling signaling: ${e.localizedMessage}")
         }
-        webRtcManager.handleSignaling(fromMeshId, type, payload)
     }
 
     override fun onEncryptedMessageReceived(fromMeshId: String, message: EncryptedMessage) {
         handleIncomingMessage(fromMeshId, message)
+    }
+    
+    override fun onError(message: String) {
+        // Forward error to ViewModel for display
+        messageListener?.onTransportError(message)
     }
 
     override fun onConnected() {
