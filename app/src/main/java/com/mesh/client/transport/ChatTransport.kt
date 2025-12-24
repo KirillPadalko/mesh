@@ -73,7 +73,7 @@ class ChatTransport(
                 webRtcManager.connectToPeer(peerId)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error sending protocol message: ${e.message}")
+            Log.e(TAG, "Error sending protocol message", e)
         }
     }
 

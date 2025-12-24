@@ -103,6 +103,7 @@ class WebSocketService(
     }
 
     fun sendEncryptedMessage(toMeshId: String, message: EncryptedMessage) {
+        Log.d(TAG, "sendEncryptedMessage to $toMeshId")
         val msgJson = gson.toJson(message)
         val payloadBase64 = android.util.Base64.encodeToString(msgJson.toByteArray(), android.util.Base64.NO_WRAP)
         
@@ -111,7 +112,15 @@ class WebSocketService(
             to = toMeshId,
             payload = payloadBase64
         )
-        webSocket?.send(gson.toJson(serverMsg))
+        val serverMsgJson = gson.toJson(serverMsg)
+        Log.d(TAG, "Sending ServerMessage: from=${serverMsg.from}, to=${serverMsg.to}, payload_length=${payloadBase64.length}")
+        
+        val success = webSocket?.send(serverMsgJson) ?: false
+        if (success) {
+            Log.d(TAG, "Message queued to WebSocket successfully")
+        } else {
+            Log.e(TAG, "Failed to send message - WebSocket is ${if (webSocket == null) "null" else "closed/failed"}")
+        }
     }
 
     companion object {
