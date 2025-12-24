@@ -25,12 +25,22 @@ class WebSocketService(
     private var webSocket: WebSocket? = null
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .pingInterval(15, TimeUnit.SECONDS) // Send PING frame every 15s
+        .readTimeout(0, TimeUnit.MILLISECONDS) // Keep alive
         .build()
     
-    // Manual handler not needed for native ping
-    // private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val pingInterval = 30_000L // 30 seconds
+    
+    private val pingRunnable = object : Runnable {
+        override fun run() {
+            try {
+                webSocket?.send("ping")
+                handler.postDelayed(this, pingInterval)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending ping", e)
+            }
+        }
+    }
     
     var listener: Listener? = null
 
@@ -42,6 +52,7 @@ class WebSocketService(
     fun disconnect() {
         webSocket?.close(1000, "Client disconnecting")
         webSocket = null
+        handler.removeCallbacks(pingRunnable)
     }
 
     override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -54,8 +65,11 @@ class WebSocketService(
         )
         webSocket.send(gson.toJson(auth))
         listener?.onConnected()
+        
+        // Start keep-alive pings
+        handler.postDelayed(pingRunnable, pingInterval)
     }
-
+    
     override fun onMessage(webSocket: WebSocket, text: String) {
         try {
             // Ignore ping/pong messages
@@ -97,11 +111,13 @@ class WebSocketService(
 
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
         Log.d(TAG, "Disconnected: $reason")
+        handler.removeCallbacks(pingRunnable)
         listener?.onDisconnected()
     }
 
     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
         Log.e(TAG, "Connection failure: ${t.message}")
+        handler.removeCallbacks(pingRunnable)
         listener?.onDisconnected()
     }
 
