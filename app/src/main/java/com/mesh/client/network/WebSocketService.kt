@@ -19,6 +19,7 @@ class WebSocketService(
         fun onEncryptedMessageReceived(fromMeshId: String, message: EncryptedMessage)
         fun onConnected()
         fun onDisconnected()
+        fun onError(message: String)
     }
 
     private var webSocket: WebSocket? = null
@@ -26,6 +27,16 @@ class WebSocketService(
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // Keep alive
         .build()
+    
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val pingInterval = 30_000L // 30 seconds
+    
+    private val pingRunnable = object : Runnable {
+        override fun run() {
+            webSocket?.send("ping")
+            handler.postDelayed(this, pingInterval)
+        }
+    }
     
     var listener: Listener? = null
 
