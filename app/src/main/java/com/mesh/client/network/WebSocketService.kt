@@ -25,18 +25,12 @@ class WebSocketService(
     private var webSocket: WebSocket? = null
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
-        .readTimeout(0, TimeUnit.MILLISECONDS) // Keep alive
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .pingInterval(15, TimeUnit.SECONDS) // Send PING frame every 15s
         .build()
     
-    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val pingInterval = 30_000L // 30 seconds
-    
-    private val pingRunnable = object : Runnable {
-        override fun run() {
-            webSocket?.send("ping")
-            handler.postDelayed(this, pingInterval)
-        }
-    }
+    // Manual handler not needed for native ping
+    // private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     
     var listener: Listener? = null
 
@@ -48,7 +42,6 @@ class WebSocketService(
     fun disconnect() {
         webSocket?.close(1000, "Client disconnecting")
         webSocket = null
-        handler.removeCallbacks(pingRunnable) // Stop pings on disconnect
     }
 
     override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -61,8 +54,6 @@ class WebSocketService(
         )
         webSocket.send(gson.toJson(auth))
         listener?.onConnected()
-        // Start keep-alive pings after successful connection
-        handler.postDelayed(pingRunnable, pingInterval)
     }
 
     override fun onMessage(webSocket: WebSocket, text: String) {
