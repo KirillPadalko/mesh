@@ -37,6 +37,7 @@ class WebSocketService(
     fun disconnect() {
         webSocket?.close(1000, "Client disconnecting")
         webSocket = null
+        handler.removeCallbacks(pingRunnable) // Stop pings on disconnect
     }
 
     override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -49,10 +50,17 @@ class WebSocketService(
         )
         webSocket.send(gson.toJson(auth))
         listener?.onConnected()
+        // Start keep-alive pings after successful connection
+        handler.postDelayed(pingRunnable, pingInterval)
     }
 
     override fun onMessage(webSocket: WebSocket, text: String) {
         try {
+            // Ignore ping/pong messages
+            if (text == "ping" || text == "pong") {
+                return
+            }
+            
             Log.d(TAG, "Received message: ${text.take(100)}...")
             
             // Parse as generic JSON to check type
@@ -87,11 +95,13 @@ class WebSocketService(
 
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
         Log.d(TAG, "Disconnected: $reason")
+        handler.removeCallbacks(pingRunnable)
         listener?.onDisconnected()
     }
 
     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
         Log.e(TAG, "Connection failure: ${t.message}")
+        handler.removeCallbacks(pingRunnable)
         listener?.onDisconnected()
     }
 
