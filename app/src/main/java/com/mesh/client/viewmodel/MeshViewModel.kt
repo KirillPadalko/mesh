@@ -115,7 +115,7 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
         val myId = _meshId.value ?: return
         
         // Init Services
-        val wsService = WebSocketService("ws://10.0.2.2:8080", myId) // Localhost emulator
+        val wsService = WebSocketService(com.mesh.client.BuildConfig.SERVER_URL + "/ws", myId) // Production server
         val rtcManager = WebRtcManager(context, wsService, myId)
         val cryptoManager = CryptoManager(identityManager)
         

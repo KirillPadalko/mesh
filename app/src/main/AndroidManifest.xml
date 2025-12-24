@@ -36,6 +36,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" android:host="10.0.2.2" android:port="8080" android:pathPrefix="/invite/" />
+                <data android:scheme="http" android:host="34.78.2.164" android:port="8001" android:pathPrefix="/invite/" />
             </intent-filter>
         </activity>
         

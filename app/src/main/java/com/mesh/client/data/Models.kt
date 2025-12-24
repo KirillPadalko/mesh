@@ -17,7 +17,7 @@ data class EncryptedMessage(
 data class SignalingMessage(
     @SerializedName("type") val type: String,               // "auth", "offer", "answer", "ice"
     @SerializedName("payload") val payload: String? = null, // SDP or ICE candidate JSON
-    @SerializedName("mesh_id") val meshId: String? = null,  // For auth
+    @SerializedName("user_id") val userId: String? = null,  // For auth (Server expects "user_id")
     @SerializedName("client_version") val clientVersion: String? = null // For auth
 )
 

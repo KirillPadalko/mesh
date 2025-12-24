@@ -142,7 +142,9 @@ class CryptoManager(private val identityManager: IdentityManager) {
         // OK. I will implement a proper HKDF on a mock shared secret for now to not block progress, 
         // as writing the curve conversion math in raw Kotlin is risky without tests.
         // USE CASE: If peerMeshId is used, we derive a unique key.
-        val mockShared = (identityManager.getMeshId() + peerMeshId).toByteArray()
+        val myId = identityManager.getMeshId() ?: throw IllegalStateException("No Identity")
+        val ids = listOf(myId, peerMeshId).sorted()
+        val mockShared = (ids[0] + ids[1]).toByteArray()
         return hkdf(mockShared)
     }
 

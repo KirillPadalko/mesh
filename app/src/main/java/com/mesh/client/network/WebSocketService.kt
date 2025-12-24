@@ -44,7 +44,7 @@ class WebSocketService(
         // Send Auth
         val auth = SignalingMessage(
             type = "auth",
-            meshId = myMeshId,
+            userId = myMeshId,
             clientVersion = clientVersion
         )
         webSocket.send(gson.toJson(auth))
@@ -70,7 +70,7 @@ class WebSocketService(
                 // We'll assume the server adds it or wraps it. 
                 // For MVP, letting pass if "mesh_id" field is used as sender, or we need a wrapper.
                 // Let's assume standard SignalingMessage contains the data.
-                listener?.onSignalingMessage(sig.meshId ?: "unknown", sig.type, sig.payload)
+                listener?.onSignalingMessage(sig.userId ?: "unknown", sig.type, sig.payload)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing message: ${e.message}")

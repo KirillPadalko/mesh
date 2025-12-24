@@ -78,6 +78,12 @@ class ChatTransport(
 
     // WebSocketService.Listener
     override fun onSignalingMessage(fromMeshId: String, type: String, payload: String?) {
+        if (type == "error") {
+             Log.e(TAG, "Server Error: Peer $fromMeshId might be offline. Details: $payload")
+             // TODO: Propagate to UI via callback
+             // For now, log is sufficient for debugging "Silence"
+             return
+        }
         webRtcManager.handleSignaling(fromMeshId, type, payload)
     }
 

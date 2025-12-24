@@ -26,7 +26,7 @@ class UpdateManager(private val context: Context) {
     
     companion object {
         private const val TAG = "UpdateManager"
-        private const val UPDATE_SERVER_URL = "http://34.78.2.164:8001" // TODO: Replace with actual server URL
+        private val UPDATE_SERVER_URL = com.mesh.client.BuildConfig.SERVER_URL.replace("ws://", "http://")
         private const val CURRENT_VERSION = "0.1.0" // TODO: Sync with build.gradle versionName
     }
     
