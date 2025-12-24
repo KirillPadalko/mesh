@@ -59,6 +59,13 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
     private val _l2Items = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     val l2Items: StateFlow<Map<String, Set<String>>> = _l2Items.asStateFlow()
 
+    // Status & Errors
+    private val _isConnected = MutableStateFlow(false)
+    val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+
+    private val _errorEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>()
+    val errorEvents: kotlinx.coroutines.flow.SharedFlow<String> = _errorEvents
+
     init {
         checkIdentity()
     }
@@ -171,6 +178,35 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
 
             override fun onL2NotifyReceived(fromMeshId: String, notifyJson: String) {
                 // Future L2 implementation
+            }
+
+            // Error propagation
+            // We need to extend MessageListener interface in ChatTransport OR handle it differently.
+            // Currently onSignalingMessage in ChatTransport logs error. We need to expose it.
+            // Let's modify ChatTransport to have onProtocolError?
+            // For now, let's assume ChatTransport exposes a callback for errors.
+        }
+        
+        // Listen to WS connection directly too?
+        wsService.listener = object : WebSocketService.Listener {
+            override fun onSignalingMessage(fromMeshId: String, type: String, payload: String?) {
+                transport.onSignalingMessage(fromMeshId, type, payload)
+                if (type == "error") {
+                     viewModelScope.launch {
+                         _errorEvents.emit("Error from $fromMeshId: $payload")
+                     }
+                }
+            }
+            override fun onEncryptedMessageReceived(fromMeshId: String, message: com.mesh.client.data.EncryptedMessage) {
+                transport.onEncryptedMessageReceived(fromMeshId, message)
+            }
+            override fun onConnected() {
+                transport.onConnected()
+                _isConnected.value = true
+            }
+            override fun onDisconnected() {
+                transport.onDisconnected()
+                _isConnected.value = false
             }
         }
         

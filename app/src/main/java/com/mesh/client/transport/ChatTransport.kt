@@ -27,7 +27,8 @@ class ChatTransport(
 
     init {
         // Register as listener
-        webSocketService.listener = this
+        // Register as listener
+        // webSocketService.listener = this // Moved to ViewModel to intercept connection status
         webRtcManager.listener = this
     }
 

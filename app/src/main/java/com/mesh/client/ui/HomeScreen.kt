@@ -24,14 +24,31 @@ fun HomeScreen(
 ) {
     val contacts by viewModel.contacts.collectAsState()
     val meshId by viewModel.meshId.collectAsState()
+    val isConnected by viewModel.isConnected.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    
+    LaunchedEffect(Unit) {
+        viewModel.errorEvents.collect { error ->
+            snackbarHostState.showSnackbar(message = error)
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Mesh") },
                 actions = {
+                    // Connection Status
+                    Box(modifier = Modifier.padding(end = 16.dp), contentAlignment = Alignment.Center) {
+                         val color = if (isConnected) androidx.compose.ui.graphics.Color.Green else androidx.compose.ui.graphics.Color.Red
+                         androidx.compose.foundation.Canvas(modifier = Modifier.size(10.dp)) {
+                             drawCircle(color = color)
+                         }
+                    }
+                    
                     IconButton(onClick = onProfileSelected) {
                         Icon(Icons.Default.Person, contentDescription = "Profile")
                     }
