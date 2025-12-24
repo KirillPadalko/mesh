@@ -218,13 +218,7 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-            override fun onDisconnected() {
-                transport.onDisconnected()
-                _isConnected.value = false
-            }
-        }
-        
-        wsService.connect()
+
         refreshContacts()
     }
     
