@@ -97,13 +97,11 @@ class WebSocketService(
 
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
         Log.d(TAG, "Disconnected: $reason")
-        handler.removeCallbacks(pingRunnable)
         listener?.onDisconnected()
     }
 
     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
         Log.e(TAG, "Connection failure: ${t.message}")
-        handler.removeCallbacks(pingRunnable)
         listener?.onDisconnected()
     }
 
