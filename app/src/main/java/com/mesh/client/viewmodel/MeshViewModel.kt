@@ -189,7 +189,7 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         
-        transport.connect()
+        wsService.connect()
         
         // Listen to WS connection directly too?
         wsService.listener = object : WebSocketService.Listener {
@@ -208,6 +208,16 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
                 transport.onConnected()
                 _isConnected.value = true
             }
+            override fun onDisconnected() {
+                transport.onDisconnected()
+                _isConnected.value = false
+            }
+            override fun onError(message: String) {
+                viewModelScope.launch {
+                    _errorEvents.emit(message)
+                }
+            }
+        }
             override fun onDisconnected() {
                 transport.onDisconnected()
                 _isConnected.value = false
