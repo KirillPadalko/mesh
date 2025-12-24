@@ -177,15 +177,19 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onL2NotifyReceived(fromMeshId: String, notifyJson: String) {
-                // Future L2 implementation
+                // Determine L2 invite notification
+                // For MVP: Log
+                Log.d("MeshViewModel", "L2 Notify from $fromMeshId: $notifyJson")
             }
-
-            // Error propagation
-            // We need to extend MessageListener interface in ChatTransport OR handle it differently.
-            // Currently onSignalingMessage in ChatTransport logs error. We need to expose it.
-            // Let's modify ChatTransport to have onProtocolError?
-            // For now, let's assume ChatTransport exposes a callback for errors.
+            
+            override fun onTransportError(message: String) {
+                viewModelScope.launch {
+                    _errorEvents.emit(message)
+                }
+            }
         }
+        
+        transport.connect()
         
         // Listen to WS connection directly too?
         wsService.listener = object : WebSocketService.Listener {

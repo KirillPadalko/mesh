@@ -21,6 +21,8 @@ class ChatTransport(
         fun onInviteReceived(fromMeshId: String, inviteJson: String)
         fun onInviteAckReceived(fromMeshId: String, ackJson: String)
         fun onL2NotifyReceived(fromMeshId: String, notifyJson: String)
+        
+        fun onTransportError(message: String)
     }
 
     var messageListener: MessageListener? = null
