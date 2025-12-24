@@ -53,27 +53,35 @@ class WebSocketService(
 
     override fun onMessage(webSocket: WebSocket, text: String) {
         try {
-            // Determine packet type. Simple guess: check simple fields
-            if (text.contains("server_message")) {
-                val msg = gson.fromJson(text, ServerMessage::class.java)
-                // Payload is Base64 encoded JSON of EncryptedMessage
-                val encryptedJson = String(android.util.Base64.decode(msg.payload, android.util.Base64.NO_WRAP))
-                val encryptedMsg = gson.fromJson(encryptedJson, EncryptedMessage::class.java)
-                listener?.onEncryptedMessageReceived(msg.from, encryptedMsg)
-            } else {
-                // Signaling
-                val sig = gson.fromJson(text, SignalingMessage::class.java)
-                // Note: Generic signaling encapsulation might vary, assuming server sends "from" field if wrapped,
-                // or we rely on logic. The prompt says "Server only routes". 
-                // Let's assume the signaling message has a way to identify sender.
-                // Protocol update: The signaling message structure in Models.kt doesn't strictly have "from".
-                // We'll assume the server adds it or wraps it. 
-                // For MVP, letting pass if "mesh_id" field is used as sender, or we need a wrapper.
-                // Let's assume standard SignalingMessage contains the data.
-                listener?.onSignalingMessage(sig.userId ?: "unknown", sig.type, sig.payload)
+            Log.d(TAG, "Received message: ${text.take(100)}...")
+            
+            // Parse as generic JSON to check type
+            val msgMap = gson.fromJson(text, Map::class.java) as? Map<*, *>
+            val msgType = msgMap?.get("type") as? String
+            
+            when {
+                msgType == "error" -> {
+                    // Server error response (e.g., recipient offline)
+                    val error = msgMap["error"] as? String ?: "unknown"
+                    val message = msgMap["message"] as? String ?: "Server error"
+                    Log.w(TAG, "Server error: $error - $message")
+                    listener?.onError(message)
+                }
+                text.contains("server_message") -> {
+                    val msg = gson.fromJson(text, ServerMessage::class.java)
+                    // Payload is Base64 encoded JSON of EncryptedMessage
+                    val encryptedJson = String(android.util.Base64.decode(msg.payload, android.util.Base64.NO_WRAP))
+                    val encryptedMsg = gson.fromJson(encryptedJson, EncryptedMessage::class.java)
+                    listener?.onEncryptedMessageReceived(msg.from, encryptedMsg)
+                }
+                else -> {
+                    // Signaling or other message types
+                    val sig = gson.fromJson(text, SignalingMessage::class.java)
+                    listener?.onSignalingMessage(sig.userId ?: "unknown", sig.type, sig.payload)
+                }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing message: ${e.message}")
+            Log.e(TAG, "Error parsing message", e)
         }
     }
 
