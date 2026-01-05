@@ -91,7 +91,7 @@ class WebSocketService(
                     Log.w(TAG, "Server error: $error - $message")
                     listener?.onError(message)
                 }
-                text.contains("server_message") -> {
+                msgType == "server_message" -> {
                     val msg = gson.fromJson(text, ServerMessage::class.java)
                     // Payload is Base64 encoded JSON of EncryptedMessage
                     val encryptedJson = String(android.util.Base64.decode(msg.payload, android.util.Base64.NO_WRAP))

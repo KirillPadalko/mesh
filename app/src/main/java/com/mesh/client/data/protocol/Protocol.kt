@@ -12,6 +12,7 @@ data class Invite(
     @SerializedName("from") val from: String, // Mesh-ID (Base58)
     @SerializedName("to") val to: String,     // Mesh-ID (Base58)
     @SerializedName("timestamp") val timestamp: Long,
+    @SerializedName("nickname") val nickname: String? = null, // Optional nickname
     @SerializedName("signature") val signature: String, // Hex
     @SerializedName("parent_invite") val parentInvite: Invite? = null
 )
@@ -22,6 +23,7 @@ data class InviteAck(
     @SerializedName("to") val to: String,
     @SerializedName("invite_hash") val inviteHash: String, // SHA-256 Hex of the Invite JSON
     @SerializedName("timestamp") val timestamp: Long,
+    @SerializedName("nickname") val nickname: String? = null, // Optional nickname
     @SerializedName("signature") val signature: String // Hex
 )
 

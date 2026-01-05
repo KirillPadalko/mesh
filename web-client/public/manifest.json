@@ -1,0 +1,30 @@
+{
+    "name": "Mesh Decentralized Messenger",
+    "short_name": "Mesh",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#0f172a",
+    "theme_color": "#0f172a",
+    "description": "A decentralized peer-to-peer messenger running on your mesh.",
+    "icons": [
+        {
+            "src": "/logo.png",
+            "sizes": "any",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/logo.png",
+            "sizes": "192x192 512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "categories": [
+        "social",
+        "communication"
+    ],
+    "screenshots": []
+}

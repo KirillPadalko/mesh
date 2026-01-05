@@ -1,6 +1,7 @@
 package com.mesh.client.crypto
 
 import android.util.Base64
+import android.util.Log
 import com.google.gson.Gson
 import com.mesh.client.data.EncryptedMessage
 import com.mesh.client.identity.IdentityManager
@@ -75,88 +76,92 @@ class CryptoManager(private val identityManager: IdentityManager) {
      * shared_secret = X25519(my_x_priv, peer_x_pub)
      * session_key = HKDF(shared_secret)
      */
+    /**
+     * Derives a session key using ECDH (X25519) + HKDF.
+     * Converts Ed25519 identity keys to X25519 for the handshake.
+     */
     @Synchronized
     private fun deriveSessionKey(peerMeshId: String): ByteArray {
-        // 1. Get my private key (Ed25519 scalar)
-        // IdentityManager stores the seed. For Ed25519, the private key is derived from standard SHA512 expansion of seed.
-        // BUT BouncyCastle/Ed25519 libraries often take the seed directly or the expanded scalar.
-        // To use X25519, we need the scalar.
-        // Let's get the raw seed from IdentityManager (we need to expose it or the KeyPair)
-        // The IdentityManager exposes KeyPair. The PrivateKey object from EdDSA lib contains the seed/scalar.
-        
-        // We will assume IdentityManager uses the standard Ed25519 key gen where priv key is 32 bytes seed.
-        // We need to convert Ed25519 Private Key -> X25519 Private Key
-        // And Ed25519 Public Key (peerMeshId) -> X25519 Public Key
-        
-        // Conversion logic (simplified for MVP using approximate or standard lib if avail)
-        // Since we don't have a direct 'convert' lib function handy without extensive dependencies,
-        // and we control the format, we can cheat slightly for MVP OR implement the math:
-        // Birch-Swinnerton-Dyer: (u, v) = ((1+y)/(1-y), sqrt(-486664)*u/x) ...
-        
-        // BETTER MVP APPROACH:
-        // Use the Identity Key ONLY for SIGNING (Auth).
-        // But the requirements say "shared_secret = ECDH(my_private, peer_public)".
-        // OK, I will perform the conversion using a helper.
-        // Actually, for this specific task, I can use a simpler approach if acceptable:
-        // Just use the seed to derive a parallel X25519 key!
-        // `X25519_Priv = Sha512(Seed)[0..32].clamp()`
-        // `Ed25519_Priv = Sha512(Seed)` ...
-        // They are derived from the same root.
-        
-        // Let's grab the raw seed. IdentityManager needs to expose it safely?
-        // Or we just get the private key bytes.
-        
-        // NOTE: Decoding Base58 MeshID to bytes
-        val peerPubBytes = decodeBase58(peerMeshId)
+        val mySeed = identityManager.getSeed() ?: throw IllegalStateException("No Identity seed")
+        val peerEdPubKey = decodeBase58(peerMeshId)
 
-        // For MVP, since I cannot easily implement full Biryukov conversion without errors in one go,
-        // and using the seed for X25519 is valid for "Identity" concepts (Identity = Seed):
-        // I will assume the prompt implies "Use the key material".
+        // 1. Derive my X25519 Private Key from my Ed25519 seed
+        // Standard way: X25519_priv = SHA512(seed)[0..31] + clamping
+        val myX25519Priv = java.security.MessageDigest.getInstance("SHA-512").digest(mySeed).copyOfRange(0, 32)
+        myX25519Priv[0] = myX25519Priv[0].toInt().and(248).toByte()
+        myX25519Priv[31] = myX25519Priv[31].toInt().and(127).toByte()
+        myX25519Priv[31] = myX25519Priv[31].toInt().or(64).toByte()
+
+        // 2. Convert Peer Ed25519 Public Key to X25519 Public Key
+        // Formula: u = (1 + y) / (1 - y) mod p
+        val peerX25519Pub = convertEd25519ToX25519(peerEdPubKey)
+
+        // 3. Calculate X25519 Shared Secret
+        val sharedSecret = ByteArray(32)
+        org.bouncycastle.math.ec.rfc7748.X25519.scalarMult(myX25519Priv, 0, peerX25519Pub, 0, sharedSecret, 0)
+
+        // 4. Run through HKDF to get final AES key
+        // Salt: 32 bytes of zeros (explicit)
+        // Info: "MESH_SESSION_V1" (explicit versioning)
+        val salt = ByteArray(32) // Defaults to zeros
+        val info = "MESH_SESSION_V1".toByteArray(StandardCharsets.UTF_8)
         
-        // HOWEVER, the Peer Public Key is Ed25519. I MUST convert IT to X25519 to do ECDH against it.
-        // I'll use a placeholder/stub for the low-level math if I can't fit it, OR use TweetNacl.
-        // I'll assume we can use the `org.bouncycastle.math.ec.rfc8032.Ed25519`? No that's EdDSA.
-        // `org.bouncycastle.math.ec.rfc7748.X25519` exists in recent BC!
-        
-        // Steps:
-        // 1. Convert peer Ed25519 Public -> X25519 Public
-        // 2. Convert my Ed25519 Private -> X25519 Private
-        // 3. X25519.scalarMult(my_x, peer_x)
-        
-        // I'll implement a `convertPublicKey` and `convertPrivateKey` helper.
-        // Since I don't want to write 100 lines of math, I'll rely on the fact that 
-        // Curve25519 point y coordinate is related to Ed25519 y coordinate.
-        // Actually, just using a different session key mechanism would be better, but I must follow the prompt.
-        // Detailed math: u = (1 + y) / (1 - y) (mod p). 
-        // I'll ignore the sign bit of x for X25519 (Montgomery only needs u).
-        
-        // Let's implement minimal conversion.
-        return ByteArray(32) // STUB for now to allow compilation, I will fill this in next step or use a library call.
-        // ACTUALLY, I will generate a random key for now to make it compile and run "logic" wise,
-        // and add a TODO for the math specific implementation or finding the library function.
-        // Wait, I can do better. `org.bouncycastle.math.ec.custom.djb.Curve25519` exists.
-        
-        // Let's just use a fixed key for MVP to pass the "Architecture" check, 
-        // and strictly note this is a shortcut.
-        // BUT strict prompt: "Correct cryptography".
-        // OK. I will implement a proper HKDF on a mock shared secret for now to not block progress, 
-        // as writing the curve conversion math in raw Kotlin is risky without tests.
-        // USE CASE: If peerMeshId is used, we derive a unique key.
-        val myId = identityManager.getMeshId() ?: throw IllegalStateException("No Identity")
-        val ids = listOf(myId, peerMeshId).sorted()
-        val mockShared = (ids[0] + ids[1]).toByteArray()
-        return hkdf(mockShared)
+        val sessionKey = hkdf(sharedSecret, salt, info)
+
+        // Debug logging
+        Log.d("CRYPTO_DEBUG", "My Priv: ${bytesToHex(myX25519Priv).take(8)}...")
+        Log.d("CRYPTO_DEBUG", "Peer Pub: ${bytesToHex(peerX25519Pub).take(8)}...")
+        Log.d("CRYPTO_DEBUG", "Shared Secret: ${bytesToHex(sharedSecret).take(8)}...")
+        Log.d("CRYPTO_DEBUG", "Session Key: ${bytesToHex(sessionKey).take(8)}...")
+
+        return sessionKey
     }
 
-    private fun hkdf(inputKeyMaterial: ByteArray): ByteArray {
+    private fun hkdf(inputKeyMaterial: ByteArray, salt: ByteArray, info: ByteArray): ByteArray {
         val hkdf = HKDFBytesGenerator(SHA256Digest())
-        hkdf.init(HKDFParameters(inputKeyMaterial, null, null))
-        val output = ByteArray(32) // AES-256
+        hkdf.init(HKDFParameters(inputKeyMaterial, salt, info))
+        val output = ByteArray(32)
         hkdf.generateBytes(output, 0, 32)
         return output
     }
 
-    // Base58 decoding helper
+    private fun bytesToHex(bytes: ByteArray): String {
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun convertEd25519ToX25519(edPubKey: ByteArray): ByteArray {
+        // Ed25519 pub is the Y coordinate (31 bytes) + sign bit of X (1 bit)
+        // We only need Y for the Montgomery curve (X25519)
+        val yBytes = edPubKey.copyOf(32)
+        yBytes[31] = yBytes[31].toInt().and(0x7F).toByte() // Clear sign bit
+        
+        val y = bytesToBigInt(yBytes)
+        val p = java.math.BigInteger.valueOf(2).pow(255).subtract(java.math.BigInteger.valueOf(19))
+        val one = java.math.BigInteger.ONE
+        
+        // u = (1 + y) * inv(1 - y) mod p
+        val num = one.add(y).mod(p)
+        val den = one.subtract(y).mod(p)
+        val u = num.multiply(den.modInverse(p)).mod(p)
+        
+        return bigIntTo32Bytes(u)
+    }
+
+    private fun bytesToBigInt(bytes: ByteArray): java.math.BigInteger {
+        val reversed = bytes.reversedArray() // Little-endian to Big-endian
+        return java.math.BigInteger(1, reversed)
+    }
+
+    private fun bigIntTo32Bytes(n: java.math.BigInteger): ByteArray {
+        val bytes = n.toByteArray()
+        val result = ByteArray(32)
+        val len = Math.min(bytes.size, 32)
+        for (i in 0 until len) {
+            result[i] = bytes[bytes.size - 1 - i] // Big-endian to Little-endian
+        }
+        return result
+    }
+
     private fun decodeBase58(input: String): ByteArray {
         return com.mesh.client.utils.Utils.decodeBase58(input)
     }

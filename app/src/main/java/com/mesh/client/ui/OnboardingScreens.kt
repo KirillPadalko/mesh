@@ -10,6 +10,8 @@ import androidx.compose.ui.unit.dp
 import com.mesh.client.viewmodel.MeshViewModel
 import kotlinx.coroutines.delay
 
+import androidx.compose.ui.graphics.Color
+
 @Composable
 fun SplashScreen(
     viewModel: MeshViewModel,
@@ -43,7 +45,12 @@ fun SplashScreen(
 @Composable
 fun OnboardingScreen(viewModel: MeshViewModel, onComplete: () -> Unit) {
     var step by remember { mutableIntStateOf(0) }
-    // 0 = Welcome, 1 = Seed Display (Create), 2 = Warning (Create), 3 = Restore
+    // 0 = Welcome
+    // 1 = Create: Nickname
+    // 2 = Create: Seed Display
+    // 3 = Create: Warning
+    // 4 = Restore: Enter Mnemonic
+    // 5 = Restore: Nickname
 
     // Hold generated seed temporarily for display
     var tempSeed by remember { mutableStateOf<String?>(null) }
@@ -51,31 +58,43 @@ fun OnboardingScreen(viewModel: MeshViewModel, onComplete: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         when (step) {
             0 -> WelcomeStep(
-                onCreate = {
-                    // Generate mnemonic-based identity
+                onCreate = { step = 1 },
+                onRestore = { step = 4 }
+            )
+            1 -> NicknameStep(
+                onNext = { name ->
+                    // Create Flow: Generate & Save
                     val mnemonic = com.mesh.client.identity.BackupManager.generateMnemonic()
                     viewModel.createFromMnemonic(mnemonic)
+                    viewModel.updateLocalNickname(name)
                     tempSeed = mnemonic
-                    step = 1
-                },
-                onRestore = { step = 3 }
+                    step = 2
+                }
             )
-            1 -> SeedDisplayStep(
+            2 -> SeedDisplayStep(
                 seed = tempSeed ?: "Error",
-                onNext = { step = 2 }
+                onNext = { step = 3 }
             )
-            2 -> WarningStep(onFinish = onComplete)
-            3 -> RestoreStep(
+            3 -> WarningStep(
+                onFinish = onComplete
+            )
+            4 -> RestoreStep(
                 onRestore = { mnemonicInput ->
                     try {
                         viewModel.restoreFromMnemonic(mnemonicInput)
-                        onComplete()
+                        step = 5 // Go to Nickname for Restore flow
                     } catch (e: Exception) {
-                        // Handle error (toast/snackbar) - For MVP log/ignore
                         android.util.Log.e("OnboardingScreen", "Failed to restore from mnemonic", e)
                     }
                 },
                 onBack = { step = 0 }
+            )
+            5 -> NicknameStep(
+                onNext = { name ->
+                    // Restore Flow: Just save nickname and finish
+                    viewModel.updateLocalNickname(name)
+                    onComplete()
+                }
             )
         }
     }
@@ -200,6 +219,38 @@ private fun RestoreStep(onRestore: (String) -> Unit, onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
         TextButton(onClick = onBack) {
             Text("Back")
+        }
+    }
+}
+
+@Composable
+private fun NicknameStep(onNext: (String) -> Unit) {
+    var nickname by remember { mutableStateOf("") }
+    
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Choose a Nickname", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "This is how you will appear to your contacts locally.",
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        OutlinedTextField(
+            value = nickname,
+            onValueChange = { nickname = it },
+            label = { Text("Nickname") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        
+        Spacer(modifier = Modifier.height(48.dp))
+        
+        Button(
+            onClick = { onNext(nickname.trim().ifEmpty { "User" }) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Next")
         }
     }
 }

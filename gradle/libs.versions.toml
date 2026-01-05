@@ -8,6 +8,11 @@ espressoCore = "3.7.0"
 appcompat = "1.7.1"
 material = "1.12.0"
 
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version = "1.9.24-1.0.20" }
+
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -15,8 +20,8 @@ androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "j
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version = "2.6.1" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version = "2.6.1" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version = "2.6.1" }
 
-[plugins]
-android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 

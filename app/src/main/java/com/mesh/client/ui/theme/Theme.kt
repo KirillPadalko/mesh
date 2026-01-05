@@ -1,11 +1,8 @@
 package com.mesh.client.ui.theme
 
 import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
@@ -13,11 +10,24 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF4CAF50), // Mesh Green
-    secondary = Color(0xFF81C784),
-    tertiary = Color(0xFF388E3C),
-    background = Color(0xFF121212),
+// --- NEW THEME ---
+private val NeonMeshScheme = darkColorScheme(
+    primary = NeonWhite,      // Main actions (Buttons) are now Stark White
+    onPrimary = Color.Black,  // Text on buttons is Black
+    secondary = NeonBlue,
+    tertiary = NeonGlow,
+    background = VoidBlack,   // Deep dark background
+    surface = SurfaceDark,    // Cards/Dialogs
+    onBackground = NeonWhite, // Text on background
+    onSurface = NeonWhite     // Text on cards
+)
+
+// --- LEGACY THEME (Rollback) ---
+private val GreenMeshScheme = darkColorScheme(
+    primary = MeshGreen,
+    secondary = MeshGreenLight,
+    tertiary = MeshGreenDark,
+    background = LegacyBackground,
     surface = Color(0xFF1E1E1E),
     onPrimary = Color.Black,
     onSecondary = Color.Black,
@@ -26,13 +36,15 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = Color.White,
 )
 
-// Force Dark Theme for MVP "Infrastructure" feel
 @Composable
 fun MeshTheme(
+    // Toggle this boolean to true to revert to the old design instantly
+    useLegacyTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = DarkColorScheme
+    val colorScheme = if (useLegacyTheme) GreenMeshScheme else NeonMeshScheme
     val view = LocalView.current
+
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window

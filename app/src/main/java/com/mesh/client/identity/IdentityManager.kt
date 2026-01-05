@@ -22,15 +22,15 @@ class IdentityManager(private val context: Context) {
         private const val PREFS_NAME = "mesh_secure_prefs"
         private const val KEY_SEED = "identity_seed"
         private const val KEY_MNEMONIC = "identity_mnemonic"
+        private const val KEY_NICKNAME = "identity_nickname"
     }
 
     // Base58 characters
     private val ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".toCharArray()
     private val ENCODED_ZERO = ALPHABET[0]
 
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
+    // Use the default alias so we can delete it if needed
+    private val masterKeyAlias = MasterKey.DEFAULT_MASTER_KEY_ALIAS
 
     private val sharedPreferences: SharedPreferences = createEncryptedPreferences()
 
@@ -39,18 +39,12 @@ class IdentityManager(private val context: Context) {
 
     /**
      * Creates EncryptedSharedPreferences with error recovery for corrupted keystore data.
-     * If decryption fails (e.g., after app reinstall or keystore invalidation), 
-     * it clears the corrupted preferences and creates a fresh instance.
+     * If decryption fails, it clears the corrupted preferences, deletes the keystore entry, 
+     * and creates a fresh instance.
      */
     private fun createEncryptedPreferences(): SharedPreferences {
-        return try {
-            EncryptedSharedPreferences.create(
-                context,
-                PREFS_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+        try {
+            return buildEncryptedPreferences()
         } catch (e: Exception) {
             // Check if the exception is related to decryption failure
             val isDecryptionFailure = e is AEADBadTagException ||
@@ -61,33 +55,48 @@ class IdentityManager(private val context: Context) {
             if (isDecryptionFailure) {
                 Log.e(TAG, "EncryptedSharedPreferences decryption failed. Clearing corrupted data and recreating.", e)
                 
-                // Delete the corrupted preferences file
+                // 1. Delete the corrupted preferences file
                 try {
-                    val prefsFile = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    prefsFile.edit().clear().commit()
+                    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().commit()
                     context.deleteSharedPreferences(PREFS_NAME)
-                } catch (deleteEx: Exception) {
-                    Log.w(TAG, "Failed to delete corrupted preferences", deleteEx)
+                } catch (ex: Exception) {
+                    Log.w(TAG, "Failed to delete corrupted preferences", ex)
                 }
                 
-                // Try creating fresh encrypted preferences
+                // 2. Delete the Master Key from Android KeyStore
                 try {
-                    return EncryptedSharedPreferences.create(
-                        context,
-                        PREFS_NAME,
-                        masterKey,
-                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-                    )
+                    val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
+                    keyStore.load(null)
+                    keyStore.deleteEntry(masterKeyAlias)
+                } catch (ex: Exception) {
+                    Log.w(TAG, "Failed to delete corrupted MasterKey", ex)
+                }
+                
+                // 3. Retry creating fresh encrypted preferences (will generate new MasterKey)
+                try {
+                    return buildEncryptedPreferences()
                 } catch (retryEx: Exception) {
                     Log.e(TAG, "Failed to recreate EncryptedSharedPreferences after clearing", retryEx)
                     throw RuntimeException("Unable to initialize secure storage", retryEx)
                 }
             } else {
-                // Re-throw if it's not a decryption failure
                 throw e
             }
         }
+    }
+
+    private fun buildEncryptedPreferences(): SharedPreferences {
+         val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+
+        return EncryptedSharedPreferences.create(
+            context,
+            PREFS_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
     }
 
     fun hasIdentity(): Boolean {
@@ -167,6 +176,21 @@ class IdentityManager(private val context: Context) {
      */
     fun exportMnemonic(): String? {
         return sharedPreferences.getString(KEY_MNEMONIC, null)
+    }
+
+    fun getSeed(): ByteArray? {
+        val seedHex = sharedPreferences.getString(KEY_SEED, null) ?: return null
+        return BackupManager.hexToSeed(seedHex)
+    }
+
+
+
+    fun setLocalNickname(nickname: String) {
+        sharedPreferences.edit().putString(KEY_NICKNAME, nickname).apply()
+    }
+
+    fun getLocalNickname(): String {
+        return sharedPreferences.getString(KEY_NICKNAME, "User") ?: "User"
     }
 
     private fun deriveKeyPair(seed: ByteArray): KeyPair {

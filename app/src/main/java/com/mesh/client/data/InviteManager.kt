@@ -11,7 +11,8 @@ import com.google.gson.Gson
 class InviteManager(
     private val identityManager: IdentityManager,
     private val signer: MeshSigner,
-    private val graphManager: MeshGraphManager
+    private val graphManager: MeshGraphManager,
+    private val contactDao: com.mesh.client.data.db.dao.ContactDao
 ) {
     private val gson = Gson()
     private val MAX_SKEW_MS = 5 * 60 * 1000L // 5 minutes
@@ -26,25 +27,25 @@ class InviteManager(
     // --- 1. Create Invite (A -> B) ---
     fun createInvite(toMeshId: String): Invite {
         val myId = identityManager.getMeshId()
+        val nickname = identityManager.getLocalNickname()
         val timestamp = System.currentTimeMillis()
         
-        // Data to sign: from + to + timestamp
-        // For MVP simplicity, we sign the concatenation or a robust structure.
-        // SPEC says: "sig_A(from + to + timestamp)"
-        val dataToSign = "$myId$toMeshId$timestamp".toByteArray()
+        // Data to sign: from + to + timestamp + nickname
+        val dataToSign = "$myId$toMeshId$timestamp$nickname".toByteArray()
         val signature = signer.sign(dataToSign)
 
         return Invite(
             from = myId,
             to = toMeshId,
             timestamp = timestamp,
+            nickname = nickname,
             signature = signature
         )
     }
 
     // --- 2. Process Incoming Invite (B receives from A) ---
     // Returns the ACK if valid and accepted, null otherwise
-    fun processInvite(invite: Invite): InviteAck? {
+    suspend fun processInvite(invite: Invite): InviteAck? {
         val myId = identityManager.getMeshId()
 
         // 1. Basic Validation
@@ -53,7 +54,8 @@ class InviteManager(
 
         
         // 2. Verify Signature
-        val dataToVerify = "${invite.from}${invite.to}${invite.timestamp}".toByteArray()
+        val nickname = invite.nickname ?: ""
+        val dataToVerify = "${invite.from}${invite.to}${invite.timestamp}${nickname}".toByteArray()
         if (!signer.verify(dataToVerify, invite.signature, invite.from)) {
             return null // Invalid signature
         }
@@ -68,26 +70,22 @@ class InviteManager(
         }
 
         // 4. Accept Logic (First invite rule)
-        // In this MVP, we might accept multiple connections, but only count unique ones for score?
-        // SPEC: "B accepts only first invite" -> implies single parent?
-        // But in a Mesh, you can have multiple peers.
-        // Let's assume SPEC meant "B accepts specific invite only once".
-        // If "First Invite" means "Single Parent", that restricts graph to a Tree.
-        // Mesh usually implies multiple links.
-        // "Mesh-Score = L1 + 0.3 * L2". If I invite 5 people, I get 5 * 1.
-        // If I accept 5 invites, do I maximize connection?
-        // Let's assume we can accept multiple invites (many-to-many graph).
         
         graphManager.markHashProcessed(inviteHash)
         graphManager.addL1Connection(invite.from) 
         graphManager.storeReceivedInvite(invite) // Store for potential L2 proof logic
-        // Note: L1 scoring: A receives +1 L1 when receiving ACK. B receives +1 when?
-        // Usually symmetric. B knows A is L1. A knows B is L1.
-        // So B acts as "Client" here accepting.
+        
+        // Save contact nickname
+        if (!invite.nickname.isNullOrBlank()) {
+            contactDao.insertContact(
+                com.mesh.client.data.db.entities.ContactEntity(invite.from, invite.nickname)
+            )
+        }
         
         // 5. Generate ACK
         val timestamp = System.currentTimeMillis()
-        val ackDataToSign = "$myId${invite.from}$inviteHash$timestamp".toByteArray()
+        val myNickname = identityManager.getLocalNickname()
+        val ackDataToSign = "$myId${invite.from}$inviteHash$timestamp$myNickname".toByteArray()
         val signature = signer.sign(ackDataToSign)
 
         return InviteAck(
@@ -95,12 +93,13 @@ class InviteManager(
             to = invite.from,
             inviteHash = inviteHash,
             timestamp = timestamp,
+            nickname = myNickname,
             signature = signature
         )
     }
 
     // --- 3. Process ACK (A receives from B) ---
-    fun processInviteAck(ack: InviteAck): Boolean {
+    suspend fun processInviteAck(ack: InviteAck): Boolean {
         val myId = identityManager.getMeshId()
         
         if (ack.to != myId) return false
@@ -108,7 +107,8 @@ class InviteManager(
 
         
         // Verify Signature
-        val dataToVerify = "${ack.from}${ack.to}${ack.inviteHash}${ack.timestamp}".toByteArray()
+        val nickname = ack.nickname ?: ""
+        val dataToVerify = "${ack.from}${ack.to}${ack.inviteHash}${ack.timestamp}$nickname".toByteArray()
         if (!signer.verify(dataToVerify, ack.signature, ack.from)) {
             return false
         }
@@ -120,6 +120,13 @@ class InviteManager(
 
         // Success: Add L1
         graphManager.addL1Connection(ack.from)
+        
+        // Save contact nickname
+        if (!ack.nickname.isNullOrBlank()) {
+             contactDao.insertContact(
+                com.mesh.client.data.db.entities.ContactEntity(ack.from, ack.nickname)
+            )
+        }
         return true
     }
 

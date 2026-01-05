@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.mesh.client.viewmodel.MeshViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,6 +34,7 @@ fun ChatScreen(
 
     var text by remember { mutableStateOf("") }
     val isP2P = p2pStatus[peerId] == true
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     Scaffold(
         topBar = {
@@ -87,6 +89,7 @@ fun ChatScreen(
                     if (text.isNotEmpty()) {
                         viewModel.sendMessage(peerId, text)
                         text = ""
+                        keyboardController?.hide()
                     }
                 }) {
                     Icon(Icons.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)

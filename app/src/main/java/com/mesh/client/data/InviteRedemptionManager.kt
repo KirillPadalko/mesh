@@ -20,6 +20,7 @@ class InviteRedemptionManager(private val context: Context) {
     companion object {
         private const val PREF_PENDING_INVITE = "pending_invite"
         private const val PREF_PENDING_INVITE_TIMESTAMP = "pending_invite_timestamp"
+        private const val PREF_PENDING_INVITE_NICKNAME = "pending_invite_nickname"
         private const val PREF_PROCESSED_INVITES = "processed_invites"
         private const val MAX_PENDING_TIME_MS = 24 * 60 * 60 * 1000L // 24 hours
     }
@@ -28,9 +29,10 @@ class InviteRedemptionManager(private val context: Context) {
      * Store a pending invite for later processing.
      * Used when user receives invite link before identity exists.
      */
-    fun storePendingInvite(inviterMeshId: String) {
+    fun storePendingInvite(inviterMeshId: String, nickname: String?) {
         prefs.edit().apply {
             putString(PREF_PENDING_INVITE, inviterMeshId)
+            putString(PREF_PENDING_INVITE_NICKNAME, nickname)
             putLong(PREF_PENDING_INVITE_TIMESTAMP, System.currentTimeMillis())
             apply()
         }
@@ -38,10 +40,11 @@ class InviteRedemptionManager(private val context: Context) {
     
     /**
      * Get pending invite if one exists and is still valid.
-     * Returns null if no pending invite or if it's expired.
+     * Returns Pair(meshId, nickname?) or null if no pending invite or if it's expired.
      */
-    fun getPendingInvite(): String? {
+    fun getPendingInvite(): Pair<String, String?>? {
         val inviterMeshId = prefs.getString(PREF_PENDING_INVITE, null) ?: return null
+        val nickname = prefs.getString(PREF_PENDING_INVITE_NICKNAME, null)
         val timestamp = prefs.getLong(PREF_PENDING_INVITE_TIMESTAMP, 0L)
         
         // Check if invite is still valid (not expired)
@@ -50,7 +53,7 @@ class InviteRedemptionManager(private val context: Context) {
             return null
         }
         
-        return inviterMeshId
+        return Pair(inviterMeshId, nickname)
     }
     
     /**
@@ -59,6 +62,7 @@ class InviteRedemptionManager(private val context: Context) {
     fun clearPendingInvite() {
         prefs.edit().apply {
             remove(PREF_PENDING_INVITE)
+            remove(PREF_PENDING_INVITE_NICKNAME)
             remove(PREF_PENDING_INVITE_TIMESTAMP)
             apply()
         }

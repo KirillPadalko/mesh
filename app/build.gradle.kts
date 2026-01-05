@@ -1,7 +1,11 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    alias(libs.plugins.ksp)
 }
+
+import java.util.Properties
+import java.io.FileInputStream
 
 android {
     namespace = "com.mesh.client"
@@ -11,11 +15,11 @@ android {
         applicationId = "com.mesh.client"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.2.0"
 
         buildConfigField("String", "VERSION_NAME", "\"${versionName}\"")
-        buildConfigField("String", "SERVER_URL", "\"ws://34.78.2.164:8001\"")
+        buildConfigField("String", "SERVER_URL", "\"wss://mesh-online.org\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -23,10 +27,31 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePropertiesFile = rootProject.file("app/keystore.properties")
+            if (keystorePropertiesFile.exists()) {
+                val properties = Properties()
+                properties.load(FileInputStream(keystorePropertiesFile))
+
+                storeFile = file(properties.getProperty("storeFile"))
+                storePassword = properties.getProperty("storePassword")
+                keyAlias = properties.getProperty("keyAlias")
+                keyPassword = properties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
+            ndk {
+                abiFilters.add("armeabi-v7a")
+                abiFilters.add("arm64-v8a")
+            }
         }
     }
     compileOptions {
@@ -79,4 +104,9 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // Room
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 }

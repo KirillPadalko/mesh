@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,6 +15,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.mesh.client.viewmodel.MeshViewModel
+import androidx.compose.ui.graphics.Color
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +48,43 @@ fun ProfileScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Your Mesh Node", style = MaterialTheme.typography.labelMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val localNickname by viewModel.localNickname.collectAsState()
+                    var isEditing by remember { mutableStateOf(false) }
+                    var editedName by remember { mutableStateOf(localNickname) }
+
+                    if (isEditing) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = editedName,
+                                onValueChange = { editedName = it },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Nickname") },
+                                singleLine = true
+                            )
+                            IconButton(onClick = {
+                                viewModel.updateLocalNickname(editedName.take(20)) // Limit length
+                                isEditing = false
+                            }) {
+                                Icon(Icons.Default.Check, "Save")
+                            }
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = localNickname,
+                                style = MaterialTheme.typography.headlineSmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = {
+                                editedName = localNickname
+                                isEditing = true
+                            }) {
+                                Icon(Icons.Default.Edit, "Edit")
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     val displayId = meshId ?: "Loading..."

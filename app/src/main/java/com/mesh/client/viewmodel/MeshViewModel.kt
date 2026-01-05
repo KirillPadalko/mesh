@@ -1,18 +1,29 @@
+
 package com.mesh.client.viewmodel
 
 import android.app.Application
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.mesh.client.crypto.CryptoManager
+import com.mesh.client.MeshApplication
 import com.mesh.client.data.InviteRedemptionManager
 import com.mesh.client.data.LocalStorage
 import com.mesh.client.data.MeshGraphManager
+import com.mesh.client.data.db.AppDatabase
 import com.mesh.client.identity.IdentityManager
-import com.mesh.client.network.WebSocketService
+import com.mesh.client.network.NetworkForegroundService
 import com.mesh.client.network.WebRtcManager
 import com.mesh.client.transport.ChatTransport
+import com.mesh.client.utils.NotificationHelper
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -24,16 +35,28 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
     // Core Components
     val identityManager = IdentityManager(context)
     val graphManager = MeshGraphManager(context)
-    private val cryptoManager = CryptoManager(identityManager)
-    
-    // Invite System
-    private val signer = com.mesh.client.crypto.MeshSigner(identityManager) // Assuming structure, or direct usage
-    private val inviteManager = com.mesh.client.data.InviteManager(identityManager, signer, graphManager)
+    private val database = (application as MeshApplication).database
+    // Helper wrapper for invite logic (still used for generating invites UI side if needed, though service handles receiving)
     private val inviteRedemptionManager = InviteRedemptionManager(context)
+    private val notificationHelper = NotificationHelper(context)
     
-    // Lazy initialization for network components since they need Identity to be ready
-    private var _chatTransport: ChatTransport? = null
-    val chatTransport: ChatTransport? get() = _chatTransport
+    // Service Binding
+    private var networkService: NetworkForegroundService? = null
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as NetworkForegroundService.LocalBinder
+            networkService = binder.getService()
+            _isConnected.value = true // Assume connected if service is running, or check service state
+            Log.d("MeshViewModel", "Service Bound")
+
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+             networkService = null
+             _isConnected.value = false
+             Log.d("MeshViewModel", "Service Disconnected")
+        }
+    }
 
     // UI State
     private val _messages = MutableStateFlow<List<LocalStorage.StoredMessage>>(emptyList())
@@ -42,44 +65,66 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
     private val _contacts = MutableStateFlow<List<LocalStorage.Contact>>(emptyList())
     val contacts: StateFlow<List<LocalStorage.Contact>> = _contacts.asStateFlow()
     
-    // Connection Status: Map<PeerID, IsP2P>
     private val _p2pStatus = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val p2pStatus: StateFlow<Map<String, Boolean>> = _p2pStatus.asStateFlow()
     
     private val _meshId = MutableStateFlow<String?>(null)
     val meshId: StateFlow<String?> = _meshId.asStateFlow()
     
+    private val _localNickname = MutableStateFlow("User")
+    val localNickname: StateFlow<String> = _localNickname.asStateFlow()
+    
     private val _meshScore = MutableStateFlow<Double>(0.0)
     val meshScore: StateFlow<Double> = _meshScore.asStateFlow()
 
-    // Graph Visualization Data
     private val _l1Items = MutableStateFlow<Set<String>>(emptySet())
     val l1Items: StateFlow<Set<String>> = _l1Items.asStateFlow()
     
     private val _l2Items = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     val l2Items: StateFlow<Map<String, Set<String>>> = _l2Items.asStateFlow()
 
-    // Status & Errors
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
-    private val _errorEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>()
-    val errorEvents: kotlinx.coroutines.flow.SharedFlow<String> = _errorEvents
+    private val _errorEvents = MutableSharedFlow<String>()
+    val errorEvents: SharedFlow<String> = _errorEvents
 
     init {
         checkIdentity()
+        observeContacts()
+        setupGraphListeners()
+    }
+    
+    private fun setupGraphListeners() {
+        graphManager.addListener(object : com.mesh.client.data.MeshGraphManager.GraphChangeListener {
+            override fun onContactUpdate(meshId: String) {
+                Log.d("MeshViewModel", "contact-update event received for ${meshId.take(8)}")
+                val newScore = graphManager.getMeshScore()
+                Log.d("MeshViewModel", "Updating meshScore to $newScore")
+                _meshScore.value = newScore
+                _l1Items.value = graphManager.getL1Connections()
+            }
+            
+            override fun onL2Update(via: String, child: String) {
+                Log.d("MeshViewModel", "L2 connection discovered via ${via.take(8)}")
+                val newScore = graphManager.getMeshScore()
+                _meshScore.value = newScore
+                _l2Items.value = graphManager.getL2Connections()
+            }
+        })
     }
 
     fun checkIdentity() {
         try {
              if (identityManager.hasIdentity()) {
                  _meshId.value = identityManager.getMeshId()
+                 _localNickname.value = identityManager.getLocalNickname()
                  _meshScore.value = graphManager.getMeshScore()
                  _l1Items.value = graphManager.getL1Connections()
                  _l2Items.value = graphManager.getL2Connections()
-                 startServices()
                  
-                 // Process pending invite if exists
+                 startNetworkService()
+                 
                  processPendingInvite()
              } else {
                  _meshId.value = null
@@ -90,255 +135,147 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    fun getSeedPhrase(): String {
-        return identityManager.exportMnemonic() ?: identityManager.exportSeedHex()
-    }
-    
-    fun createIdentity() {
-        identityManager.getIdentityKeyPair()
-        _meshId.value = identityManager.getMeshId()
-        startServices()
-    }
-    
-    fun createFromMnemonic(mnemonic: String) {
-        identityManager.createFromMnemonic(mnemonic)
-        _meshId.value = identityManager.getMeshId()
-        startServices()
-    }
-    
-    fun restoreIdentity(seedHex: String) {
-        identityManager.restoreIdentity(seedHex)
-        _meshId.value = identityManager.getMeshId()
-        startServices()
-    }
-    
-    fun restoreFromMnemonic(mnemonic: String) {
-        identityManager.restoreFromMnemonic(mnemonic)
-        _meshId.value = identityManager.getMeshId()
-        startServices()
-    }
-
-    private fun startServices() {
+    private fun startNetworkService() {
         val myId = _meshId.value ?: return
-        
-        // Init Services
-        val wsService = WebSocketService(com.mesh.client.BuildConfig.SERVER_URL + "/ws", myId) // Production server
-        val rtcManager = WebRtcManager(context, wsService, myId)
-        val cryptoManager = CryptoManager(identityManager)
-        
-        val transport = ChatTransport(cryptoManager, rtcManager, wsService, myId)
-        _chatTransport = transport
-        
-        // Listeners
-        transport.messageListener = object : ChatTransport.MessageListener {
-            override fun onMessageReceived(fromMeshId: String, text: String, timestamp: Long) {
-                 LocalStorage.saveMessage(fromMeshId, true, text, timestamp)
-                 refreshMessages(fromMeshId)
-                 ensureContact(fromMeshId)
-            }
-
-            override fun onMessageStatusChanged(peerId: String, isP2P: Boolean) {
-                val newMap = _p2pStatus.value.toMutableMap()
-                newMap[peerId] = isP2P
-                _p2pStatus.value = newMap
-            }
-            
-            override fun onInviteReceived(fromMeshId: String, inviteJson: String) {
-                viewModelScope.launch {
-                    val invite = com.google.gson.Gson().fromJson(inviteJson, com.mesh.client.data.protocol.Invite::class.java)
-                    val ack = inviteManager.processInvite(invite)
-                    if (ack != null) {
-                        Log.i("MeshViewModel", "Valid invite from $fromMeshId. Sending ACK.")
-                        // Auto-accept and reply with ACK
-                        val ackJson = com.google.gson.Gson().toJson(ack)
-                        transport.sendInviteAck(fromMeshId, ackJson)
-                        
-                        // Add L1 connection
-                        graphManager.addL1Connection(fromMeshId)
-                        // Update UI
-                        _l1Items.value = graphManager.getL1Connections()
-                        _meshScore.value = graphManager.getMeshScore()
-                        ensureContact(fromMeshId)
-                    } else {
-                        Log.w("MeshViewModel", "Invalid invite from $fromMeshId")
-                    }
-                }
-            }
-
-            override fun onInviteAckReceived(fromMeshId: String, ackJson: String) {
-               viewModelScope.launch {
-                   val ack = com.google.gson.Gson().fromJson(ackJson, com.mesh.client.data.protocol.InviteAck::class.java)
-                   Log.i("MeshViewModel", "Received Invite ACK from ${ack.from} (Peer: $fromMeshId)")
-                   graphManager.addL1Connection(fromMeshId)
-                   _l1Items.value = graphManager.getL1Connections()
-                   _meshScore.value = graphManager.getMeshScore()
-                   ensureContact(fromMeshId)
-               }
-            }
-
-            override fun onL2NotifyReceived(fromMeshId: String, notifyJson: String) {
-                // Determine L2 invite notification
-                // For MVP: Log
-                Log.d("MeshViewModel", "L2 Notify from $fromMeshId: $notifyJson")
-            }
-            
-            override fun onTransportError(message: String) {
-                viewModelScope.launch {
-                    _errorEvents.emit(message)
-                }
-            }
+        val intent = Intent(context, NetworkForegroundService::class.java).apply {
+            putExtra("mesh_id", myId)
         }
-        
-        wsService.connect()
-        
-        // Listen to WS connection directly too?
-        wsService.listener = object : WebSocketService.Listener {
-            override fun onSignalingMessage(fromMeshId: String, type: String, payload: String?) {
-                transport.onSignalingMessage(fromMeshId, type, payload)
-                if (type == "error") {
-                     viewModelScope.launch {
-                         _errorEvents.emit("Error from $fromMeshId: $payload")
-                     }
-                }
-            }
-            override fun onEncryptedMessageReceived(fromMeshId: String, message: com.mesh.client.data.EncryptedMessage) {
-                transport.onEncryptedMessageReceived(fromMeshId, message)
-            }
-            override fun onConnected() {
-                transport.onConnected()
-                _isConnected.value = true
-            }
-            override fun onDisconnected() {
-                transport.onDisconnected()
-                _isConnected.value = false
-            }
-            override fun onError(message: String) {
-                viewModelScope.launch {
-                    _errorEvents.emit(message)
-                }
-            }
+        // Start Foreground Service
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
         }
-
-        refreshContacts()
+        // Bind
+        context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
     
-    fun sendMessage(toPeerId: String, text: String) {
-        _chatTransport?.sendMessage(toPeerId, text)
-        LocalStorage.saveMessage(toPeerId, false, text, System.currentTimeMillis())
-        refreshMessages(toPeerId)
-        ensureContact(toPeerId)
+    private fun observeContacts() {
+        viewModelScope.launch {
+            database.contactDao().getContactsWithPreview().collect { entities ->
+                _contacts.value = entities.map { 
+                    LocalStorage.Contact(
+                        meshId = it.contact.meshId, 
+                        nickname = it.contact.nickname,
+                        lastMessage = it.lastMessageText,
+                        lastMessageTime = it.lastMessageTime,
+                        unreadCount = it.unreadCount
+                    ) 
+                }
+                // Also update graph UI potentially?
+                _l1Items.value = graphManager.getL1Connections()
+                _meshScore.value = graphManager.getMeshScore()
+            }
+        }
     }
+    
+    private var messageJob: Job? = null
     
     fun loadMessages(peerId: String) {
-        refreshMessages(peerId)
-    }
-    
-    private fun refreshMessages(peerId: String) {
-        val msgs = LocalStorage.getMessages(peerId)
-        _messages.value = msgs
-    }
-    
-    private fun refreshContacts() {
-        // LocalStorage contacts API needed
-        // For MVP we just use the map. Assuming LocalStorage exposes values or we add a method.
-        // Let's rely on ensuring contacts for now or add get method.
-        // Quick update to LocalStorage: add getContacts()
-        // Or access map directly if open? No, it's private.
-        // I'll add getContacts() to LocalStorage in next step or use simple workaround.
-    }
-    
-    private fun ensureContact(peerId: String) {
-        if (LocalStorage.getContact(peerId) == null) {
-            LocalStorage.saveContact(peerId, "User ${peerId.take(4)}")
-            _contacts.value = _contacts.value + LocalStorage.Contact(peerId, "User ${peerId.take(4)}")
+        messageJob?.cancel()
+        messageJob = viewModelScope.launch {
+            // Mark as read immediately when loading
+            database.messageDao().markMessagesAsRead(peerId)
+            
+            database.messageDao().getMessagesForPeer(peerId).collect { entities ->
+                _messages.value = entities.map { 
+                    LocalStorage.StoredMessage(it.peerId, it.isIncoming, it.text, it.timestamp) 
+                }
+            }
         }
+    }
+
+    private fun refreshMessages(peerId: String) {
+        // This will trigger the observer in loadMessages if it's active for this peerId
+        // Or, if not active, it will just update the DB.
+        // For now, we'll just rely on the DB observer.
+        // If we need to force a refresh for the current chat, we'd need to re-collect.
+        // For simplicity, let's assume the current chat's observer is always active.
+    }
+
+    private suspend fun ensureContact(peerId: String) {
+        if (database.contactDao().getContact(peerId) == null) {
+            database.contactDao().insertContact(
+                com.mesh.client.data.db.entities.ContactEntity(peerId, "User ${peerId.take(4)}")
+            )
+        }
+    }
+
+    fun sendMessage(toPeerId: String, text: String) {
+        networkService?.sendMessage(toPeerId, text)
+         // Optimistically update UI? The DB observer will handle it, but might be slight delay.
+         // DB observer is fast enough.
     }
     
     fun addContact(peerId: String, nickname: String) {
-        LocalStorage.saveContact(peerId, nickname)
-        // Refresh flow
-        val current = _contacts.value
-        if (current.none { it.meshId == peerId }) {
-            _contacts.value = current + LocalStorage.Contact(peerId, nickname)
-        }
-    }
-    
-    fun handleInvite(inviterMeshId: String) {
-        val myId = _meshId.value
-        
-        // If no identity yet, store as pending
-        if (myId == null) {
-            inviteRedemptionManager.storePendingInvite(inviterMeshId)
-            return
-        }
-        
-        // Don't invite self
-        if (inviterMeshId == myId) return
-        
-        // Check if already processed
-        if (inviteRedemptionManager.isInviteProcessed(inviterMeshId)) {
-            Log.d("MeshViewModel", "Invite from $inviterMeshId already processed")
-            return
-        }
-        
-        // Add as contact if not exists
-        if (contacts.value.none { it.meshId == inviterMeshId }) {
-            addContact(inviterMeshId, "User ${inviterMeshId.take(4)}")
-        }
-        
-        // Mark as processed
-        inviteRedemptionManager.markInviteProcessed(inviterMeshId)
-        
-        // --- L1 Protocol Integration ---
-        // We are the new user (B). We redeem a link from A.
-        // Actually, the INVITE message flow is usually: A sends Invite -> B.
-        // But with Deep Link: B has the link, clicks it. A doesn't know B yet.
-        // So B initiates connection to A.
-        // Protocol Choice: 
-        // 1. B connects to A.
-        // 2. B sends "Request Invite"? Or B sends a Self-Signed "Reverse Invite"?
-        // Standard flow: A -> Invite -> B.
-        // In deep link: B has the keys.
-        // Let's assume the deep link implies A *wants* to invite B.
-        // So B sends a "Hello" or, simpler:
-        // B creates an Invite for A? No, hierarchy.
-        
-        // REVISED FLOW for Deep Link:
-        // 1. B connects to A.
-        // 2. B generates an INVITE from B->A (B invites A). Mutual?
-        // Let's stick to symmetrical graph. "Invite" is just a handshake.
-        // B sends Invite(from=B, to=A)
-        // A receives, validates, sends ACK.
-        // A adds B. B adds A (on ACK or immediately).
-        
-        Log.i("MeshViewModel", "Initiating L1 Protocol with $inviterMeshId")
         viewModelScope.launch {
-             val invite = inviteManager.createInvite(inviterMeshId)
-             val inviteJson = com.google.gson.Gson().toJson(invite)
-             // We need to wait for transport to be ready potentially? 
-             // Ideally we have transport if services started.
-             // If P2P not ready, goes via server (which is fine).
-             _chatTransport?.sendInvite(inviterMeshId, inviteJson)
-             
-             // Optimistically add contact
-             graphManager.addL1Connection(inviterMeshId)
-             _l1Items.value = graphManager.getL1Connections()
-             _meshScore.value = graphManager.getMeshScore()
+            // 1. Add to Graph (Increases Score)
+            graphManager.addL1Connection(peerId)
+            
+            // 2. Add to DB if new
+            if (database.contactDao().getContact(peerId) == null) {
+                 database.contactDao().insertContact(
+                     com.mesh.client.data.db.entities.ContactEntity(peerId, nickname)
+                 )
+            }
+
+            // 3. Update State
+            _meshScore.value = graphManager.getMeshScore()
+            _l1Items.value = graphManager.getL1Connections()
         }
     }
     
-    private fun processPendingInvite() {
-        val pendingInvite = inviteRedemptionManager.getPendingInvite()
-        if (pendingInvite != null) {
-            Log.i("MeshViewModel", "Processing pending invite from $pendingInvite")
-            handleInvite(pendingInvite)
-            inviteRedemptionManager.clearPendingInvite()
+    fun deleteContact(meshId: String) {
+        viewModelScope.launch {
+            // 1. Remove from Graph (Decreases Score)
+            graphManager.removeConnection(meshId)
+            
+            // 2. Remove from DB
+            database.contactDao().deleteContact(meshId)
+            
+            // 3. Update State (Flows should trigger automatically if observing graph/db)
+            _meshScore.value = graphManager.getMeshScore()
+            _l1Items.value = graphManager.getL1Connections()
+            _l2Items.value = graphManager.getL2Connections()
         }
     }
 
+    fun renameContact(meshId: String, newNickname: String) {
+        viewModelScope.launch {
+            database.contactDao().insertContact(
+                com.mesh.client.data.db.entities.ContactEntity(meshId, newNickname)
+            )
+        }
+    }
+    
+    fun handleInvite(inviterMeshId: String, nickname: String? = null) {
+        val myId = _meshId.value
+        if (myId == null) {
+            inviteRedemptionManager.storePendingInvite(inviterMeshId, nickname)
+            return
+        }
+        if (inviterMeshId == myId) return
+        
+        // Ensure Contact
+        val contactName = if (!nickname.isNullOrBlank()) nickname else "User ${inviterMeshId.take(4)}"
+        addContact(inviterMeshId, contactName)
+        inviteRedemptionManager.markInviteProcessed(inviterMeshId)
+
+        // Send via Service
+        networkService?.sendInvite(inviterMeshId)
+    }
+    
+    private fun processPendingInvite() {
+        val pending = inviteRedemptionManager.getPendingInvite()
+        if (pending != null) {
+            val (inviterMeshId, nickname) = pending
+            handleInvite(inviterMeshId, nickname)
+            inviteRedemptionManager.clearPendingInvite()
+        }
+    }
     
     fun getSignalLevel(score: Double): Int {
-        return when {
+         return when {
             score >= 50.0 -> 5
             score >= 25.0 -> 4
             score >= 10.0 -> 3
@@ -347,5 +284,32 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
             else -> 0
         }
     }
+    
+    // Methods delegating to identity manager
+    fun getSeedPhrase(): String = identityManager.exportMnemonic() ?: identityManager.exportSeedHex()
+    
+    fun createIdentity() {
+        identityManager.getIdentityKeyPair()
+        checkIdentity()
+    }
+    
+    fun createFromMnemonic(mnemonic: String) {
+        identityManager.createFromMnemonic(mnemonic)
+        checkIdentity()
+    }
+    
+    fun restoreIdentity(seedHex: String) {
+        identityManager.restoreIdentity(seedHex)
+        checkIdentity()
+    }
+    
+    fun restoreFromMnemonic(mnemonic: String) {
+        identityManager.restoreFromMnemonic(mnemonic)
+        checkIdentity()
+    }
+    
+    fun updateLocalNickname(newName: String) {
+        identityManager.setLocalNickname(newName)
+        _localNickname.value = newName
+    }
 }
-

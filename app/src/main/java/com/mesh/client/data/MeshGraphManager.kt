@@ -1,6 +1,7 @@
 package com.mesh.client.data
 
 import android.content.Context
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mesh.client.data.protocol.Invite
@@ -23,9 +24,35 @@ class MeshGraphManager(context: Context) {
     private val l2Connections = mutableMapOf<String, MutableSet<String>>()
     private val processedHashes = mutableSetOf<String>()
     private val receivedInvitesMap = mutableMapOf<String, Invite>()
+    
+    // Event listeners (matching web client functionality)
+    interface GraphChangeListener {
+        fun onContactUpdate(meshId: String)
+        fun onL2Update(via: String, child: String)
+    }
+    
+    private val listeners = mutableListOf<GraphChangeListener>()
 
     init {
         loadGraph()
+    }
+    
+    fun addListener(listener: GraphChangeListener) {
+        if (!listeners.contains(listener)) {
+            listeners.add(listener)
+        }
+    }
+    
+    fun removeListener(listener: GraphChangeListener) {
+        listeners.remove(listener)
+    }
+    
+    private fun notifyContactUpdate(meshId: String) {
+        listeners.forEach { it.onContactUpdate(meshId) }
+    }
+    
+    private fun notifyL2Update(via: String, child: String) {
+        listeners.forEach { it.onL2Update(via, child) }
     }
 
     private fun loadGraph() {
@@ -78,7 +105,14 @@ class MeshGraphManager(context: Context) {
 
     fun addL1Connection(meshId: String) {
         if (l1Contacts.add(meshId)) {
+            Log.d("MeshGraph", "Adding L1 contact ${meshId.take(8)}")
             saveGraph()
+            val newScore = getMeshScore()
+            Log.d("MeshGraph", "New meshScore: $newScore")
+            notifyContactUpdate(meshId)
+            Log.d("MeshGraph", "Emitted 'contact-update' event")
+        } else {
+            Log.d("MeshGraph", "Contact ${meshId.take(8)} already exists, skipping")
         }
     }
 
@@ -88,6 +122,7 @@ class MeshGraphManager(context: Context) {
         val children = l2Connections.getOrPut(viaL1) { mutableSetOf() }
         if (children.add(childL2)) {
             saveGraph()
+            notifyL2Update(viaL1, childL2)
         }
     }
 
@@ -108,4 +143,22 @@ class MeshGraphManager(context: Context) {
     }
     
     fun isHashProcessed(hash: String): Boolean = processedHashes.contains(hash)
+
+    fun removeConnection(meshId: String) {
+        var changed = false
+        // 1. Remove Direct Connection (L1) -> Reduces score by 1.0
+        if (l1Contacts.remove(meshId)) {
+            changed = true
+        }
+        
+        // 2. Remove Downstream Connections (L2) provided by this peer -> Reduces score by 0.3 * count
+        if (l2Connections.containsKey(meshId)) {
+            l2Connections.remove(meshId)
+            changed = true
+        }
+
+        if (changed) {
+            saveGraph()
+        }
+    }
 }

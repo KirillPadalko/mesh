@@ -1,0 +1,122 @@
+.onboarding-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    background: var(--background);
+}
+
+.onboarding-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 40px;
+    max-width: 480px;
+    width: 100%;
+    box-shadow: var(--shadow);
+}
+
+.onboarding-card h1 {
+    font-size: 24px;
+    margin-bottom: 8px;
+    text-align: center;
+    color: var(--text);
+    background: none;
+    background: none;
+}
+
+.onboarding-card h2 {
+    font-size: 20px;
+    margin-bottom: 24px;
+    text-align: center;
+    color: var(--text);
+}
+
+.subtitle {
+    text-align: center;
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+    font-size: 14px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--text);
+    font-size: 14px;
+}
+
+.button-group {
+    display: flex;
+    gap: 12px;
+    margin-top: 32px;
+}
+
+.button-group button {
+    flex: 1;
+    justify-content: center;
+}
+
+.primary-button {
+    background: var(--primary);
+    color: white;
+}
+
+.secondary-button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+
+.secondary-button:hover {
+    background: var(--surface-raised);
+    border-color: var(--text-secondary);
+}
+
+.mnemonic-box {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin: 20px 0;
+}
+
+.mnemonic {
+    background: var(--background);
+    padding: 16px;
+    border-radius: var(--radius);
+    font-family: 'Courier New', monospace;
+    /* Keep monospace for mnemonic for readability */
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 12px 0;
+    word-wrap: break-word;
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+
+.warning {
+    color: var(--warning);
+    font-size: 13px;
+    margin-top: 12px;
+    background: rgba(245, 158, 11, 0.1);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--error);
+    color: var(--error);
+    padding: 12px;
+    border-radius: var(--radius);
+    margin: 12px 0;
+    font-size: 14px;
+}
