@@ -5,6 +5,7 @@ import { identityManager } from './core/crypto/IdentityManager';
 import { InstallPrompt } from './pwa/InstallPromptComponent';
 import { pwaInstallManager } from './pwa/PWAInstallManager';
 import './index.css';
+import { SplashScreen } from './ui/SplashScreen';
 
 function App() {
     const [hasIdentity, setHasIdentity] = useState<boolean | null>(null);
@@ -61,11 +62,7 @@ function App() {
     };
 
     if (hasIdentity === null) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-                <div>Loading...</div>
-            </div>
-        );
+        return <SplashScreen />;
     }
 
     if (!hasIdentity) {

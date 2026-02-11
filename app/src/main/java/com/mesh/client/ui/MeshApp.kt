@@ -3,6 +3,7 @@ package com.mesh.client.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -68,6 +69,34 @@ fun MeshApp(viewModel: MeshViewModel = viewModel()) {
                  viewModel = viewModel,
                  onBack = { navController.popBackStack() }
              )
+        }
+        
+        composable("call") {
+             val peerId by viewModel.currentCallPeerId.collectAsState()
+             if (peerId != null) {
+                 CallScreen(peerId = peerId!!, viewModel = viewModel)
+             }
+        }
+    }
+    
+    // Navigation Logic for Call
+    val callState by viewModel.callState.collectAsState()
+    LaunchedEffect(callState) {
+        when (callState) {
+            MeshViewModel.CallState.CONNECTED, MeshViewModel.CallState.INCOMING -> {
+                if (navController.currentDestination?.route != "call") {
+                    navController.navigate("call") {
+                        launchSingleTop = true
+                    }
+                }
+            }
+            MeshViewModel.CallState.IDLE -> {
+                // Return to previous screen if we are on the call screen
+                if (navController.currentDestination?.route == "call") {
+                    navController.popBackStack()
+                }
+            }
+            else -> {}
         }
     }
 }

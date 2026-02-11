@@ -5,28 +5,36 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.mesh.client.ui.MeshApp
 import com.mesh.client.ui.theme.MeshTheme
+import androidx.compose.foundation.layout.fillMaxSize
 
 import android.content.Intent
 import android.os.Build
 import androidx.lifecycle.ViewModelProvider
 import com.mesh.client.viewmodel.MeshViewModel
-import com.mesh.client.updates.UpdateManager
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
+// import com.mesh.client.updates.UpdateManager
+// import androidx.lifecycle.lifecycleScope
+// import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Check for updates on startup
-        val updateManager = UpdateManager(this)
-        lifecycleScope.launch {
-            updateManager.checkForUpdates()
-        }
+        // Auto-update disabled (requires REQUEST_INSTALL_PACKAGES permission)
+        // Updates will be handled by Google Play Store
+        // val updateManager = UpdateManager(this)
+        // lifecycleScope.launch {
+        //     updateManager.checkForUpdates()
+        // }
 
-        // Request Notification Permission
+        // Request Permissions
+        val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        permissions.add(android.Manifest.permission.RECORD_AUDIO)
+        
+        if (permissions.isNotEmpty()) {
+            requestPermissions(permissions.toTypedArray(), 101)
         }
         
         val viewModel = ViewModelProvider(this)[MeshViewModel::class.java]
@@ -34,7 +42,12 @@ class MainActivity : ComponentActivity() {
         
         setContent {
             MeshTheme {
-                MeshApp(viewModel)
+                androidx.compose.material3.Surface(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                ) {
+                    MeshApp(viewModel)
+                }
             }
         }
     }

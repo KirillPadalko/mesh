@@ -29,6 +29,7 @@
 # Prevent R8 from stripping generic signatures from TypeToken subclasses
 -keep class com.google.gson.reflect.TypeToken { *; }
 -keep class * extends com.google.gson.reflect.TypeToken
+-keep class com.google.gson.** { *; }
 
 # Application specific Gson rules
 # Ensure we keep generic signatures for our data classes
@@ -49,3 +50,16 @@
 # EdDSA / BouncyCastle
 -dontwarn sun.security.x509.**
 -dontwarn net.i2p.crypto.eddsa.**
+-keep class org.bouncycastle.** { *; }
+-keep class net.i2p.crypto.eddsa.** { *; }
+
+# OkHttp
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-dontwarn okhttp3.**
+
+# Kotlin Coroutines
+-keep class kotlinx.coroutines.** { *; }
+
+# Android Lifecycle
+-keep class androidx.lifecycle.** { *; }

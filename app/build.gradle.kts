@@ -1,22 +1,24 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     alias(libs.plugins.ksp)
 }
 
-import java.util.Properties
-import java.io.FileInputStream
+
 
 android {
     namespace = "com.mesh.client"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.mesh.client"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 3
-        versionName = "0.2.0"
+        targetSdk = 35
+        versionCode = 7
+        versionName = "0.4.3"
 
         buildConfigField("String", "VERSION_NAME", "\"${versionName}\"")
         buildConfigField("String", "SERVER_URL", "\"wss://mesh-online.org\"")

@@ -7,10 +7,15 @@ package com.mesh.client.data
 object LocalStorage {
 
     data class StoredMessage(
+        val id: Long,
         val peerId: String,
         val isIncoming: Boolean,
         val text: String,
-        val timestamp: Long
+        val timestamp: Long,
+        val transportType: String? = null,
+        val reaction: String? = null,
+        val replyToId: Long? = null,
+        val replyToText: String? = null
     )
     
     data class Contact(
@@ -33,7 +38,7 @@ object LocalStorage {
 
     fun saveMessage(peerId: String, isIncoming: Boolean, text: String, timestamp: Long) {
         synchronized(messages) {
-            messages.add(StoredMessage(peerId, isIncoming, text, timestamp))
+            messages.add(StoredMessage(System.nanoTime(), peerId, isIncoming, text, timestamp))
         }
     }
 

@@ -11,5 +11,9 @@ data class MessageEntity(
     val isIncoming: Boolean,
     val text: String,
     val timestamp: Long,
-    val status: String = "sent" // sent, delivered, read, failed
+    val status: String = "sent", // sent, delivered, read, failed, call_log
+    val transportType: String? = null, // p2p, server
+    val reaction: String? = null,
+    val replyToId: Long? = null,
+    val replyToText: String? = null
 )

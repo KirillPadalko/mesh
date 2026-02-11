@@ -37,6 +37,20 @@ fun HomeScreen(
             snackbarHostState.showSnackbar(message = error)
         }
     }
+    
+    // String resources
+    val strAddContactTitle = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.add_contact_dialog_title)
+    val strEnterMeshId = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.enter_mesh_id)
+    val strAdd = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.add)
+    val strCancel = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.cancel)
+    val strAddContact = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.add_contact)
+    val strProfile = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.profile)
+    val strInviteFriend = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.invite_friend)
+    val strRenameContact = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.rename_contact)
+    val strNewNickname = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.new_nickname)
+    val strSave = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.save)
+    val strDeleteContact = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.delete_contact)
+    val strNoContacts = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.no_contacts_message)
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -48,12 +62,12 @@ fun HomeScreen(
             if (showAddDialog) {
                 AlertDialog(
                     onDismissRequest = { showAddDialog = false },
-                    title = { Text("Add Contact by ID") },
+                    title = { Text(strAddContactTitle) },
                     text = {
                         TextField(
                             value = targetId,
                             onValueChange = { targetId = it },
-                            placeholder = { Text("Enter Mesh ID") },
+                            placeholder = { Text(strEnterMeshId) },
                             modifier = Modifier.fillMaxWidth()
                         )
                     },
@@ -65,12 +79,12 @@ fun HomeScreen(
                                 targetId = ""
                             }
                         }) {
-                            Text("Add")
+                            Text(strAdd)
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { showAddDialog = false }) {
-                            Text("Cancel")
+                            Text(strCancel)
                         }
                     }
                 )
@@ -79,10 +93,12 @@ fun HomeScreen(
             TopAppBar(
                 title = { 
                     Column {
-                        Text("Mesh", style = MaterialTheme.typography.titleMedium)
+                        val localNickname by viewModel.localNickname.collectAsState()
+                        Text(localNickname, style = MaterialTheme.typography.titleMedium)
                         Text(
                             (meshId ?: "").take(12) + "...", 
                             style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.clickable {
                                 meshId?.let { 
                                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(it))
@@ -101,11 +117,11 @@ fun HomeScreen(
                     }
 
                     IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Contact")
+                        Icon(Icons.Default.Add, contentDescription = strAddContact)
                     }
 
                     IconButton(onClick = onProfileSelected) {
-                        Icon(Icons.Default.Person, contentDescription = "Profile")
+                        Icon(Icons.Default.Person, contentDescription = strProfile)
                     }
                 }
             )
@@ -120,7 +136,7 @@ fun HomeScreen(
             ) {
                 Icon(
                     Icons.Default.Share,
-                    contentDescription = "Invite Friend"
+                    contentDescription = strInviteFriend
                 )
             }
         },
@@ -136,12 +152,12 @@ fun HomeScreen(
                 if (showRenameDialog) {
                     AlertDialog(
                         onDismissRequest = { showRenameDialog = false },
-                        title = { Text("Rename Contact") },
+                        title = { Text(strRenameContact) },
                         text = {
                             TextField(
                                 value = newNickname,
                                 onValueChange = { newNickname = it },
-                                label = { Text("New Nickname") },
+                                label = { Text(strNewNickname) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -153,100 +169,109 @@ fun HomeScreen(
                                     showRenameDialog = false
                                 }
                             }) {
-                                Text("Save")
+                                Text(strSave)
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = { showRenameDialog = false }) {
-                                Text("Cancel")
+                                Text(strCancel)
                             }
                         }
                     )
                 }
 
-                Box {
-                    ListItem(
-                        headlineContent = { 
-                            Text(
-                                contact.nickname, 
-                                fontWeight = if (unread) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal 
-                            ) 
-                        },
-                        supportingContent = { 
-                            val preview = contact.lastMessage ?: (contact.meshId.take(8) + "...")
-                            val textColor = if (unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                            Text(
-                                preview, 
-                                style = MaterialTheme.typography.bodySmall, 
-                                maxLines = 1, 
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                color = textColor
-                            ) 
-                        },
-                        leadingContent = {
-                            Box(contentAlignment = Alignment.Center) {
-                                 Text("●", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineSmall)
-                            }
-                        },
-                        trailingContent = {
-                            Column(horizontalAlignment = Alignment.End) {
-                                if (contact.lastMessageTime != null) {
-                                    val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(contact.lastMessageTime))
-                                    Text(time, style = MaterialTheme.typography.labelSmall)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                    tonalElevation = 1.dp
+                ) {
+                    Box {
+                        ListItem(
+                            headlineContent = { 
+                                Text(
+                                    contact.nickname, 
+                                    fontWeight = if (unread) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal 
+                                ) 
+                            },
+                            supportingContent = { 
+                                val preview = contact.lastMessage ?: (contact.meshId.take(8) + "...")
+                                val textColor = if (unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                Text(
+                                    preview, 
+                                    style = MaterialTheme.typography.bodySmall, 
+                                    maxLines = 1, 
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    color = textColor
+                                ) 
+                            },
+                            leadingContent = {
+                                Box(contentAlignment = Alignment.Center) {
+                                     Text("●", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineSmall)
                                 }
-                                if (unread) {
-                                    Badge(containerColor = MaterialTheme.colorScheme.primary) {
-                                        Text(contact.unreadCount.toString())
+                            },
+                            trailingContent = {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    if (contact.lastMessageTime != null) {
+                                        val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(contact.lastMessageTime))
+                                        Text(time, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    if (unread) {
+                                        Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                                            Text(contact.unreadCount.toString())
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        modifier = Modifier.combinedClickable(
-                            onClick = { onChatSelected(contact.meshId) },
-                            onLongClick = { showMenu = true }
-                        ),
-                        colors = ListItemDefaults.colors(
-                            containerColor = if (unread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f) else androidx.compose.ui.graphics.Color.Transparent
-                        )
-                    )
-                    
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Rename Contact") },
-                            onClick = {
-                                showRenameDialog = true
-                                showMenu = false
                             },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Rename"
-                                )
-                            }
+                            modifier = Modifier.combinedClickable(
+                                onClick = { onChatSelected(contact.meshId) },
+                                onLongClick = { showMenu = true }
+                            ),
+                            colors = ListItemDefaults.colors(
+                                containerColor = if (unread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f) else androidx.compose.ui.graphics.Color.Transparent
+                            )
                         )
-                        DropdownMenuItem(
-                            text = { Text("Delete Contact") },
-                            onClick = {
-                                viewModel.deleteContact(contact.meshId)
-                                showMenu = false
-                            },
-                            leadingIcon = { 
-                                Icon(
-                                    imageVector = Icons.Default.Delete, 
-                                    contentDescription = "Delete"
-                                ) 
-                            }
-                        )
+                        
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(strRenameContact) },
+                                onClick = {
+                                    showRenameDialog = true
+                                    showMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = strRenameContact
+                                    )
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(strDeleteContact) },
+                                onClick = {
+                                    viewModel.deleteContact(contact.meshId)
+                                    showMenu = false
+                                },
+                                leadingIcon = { 
+                                    Icon(
+                                        imageVector = Icons.Default.Delete, 
+                                        contentDescription = strDeleteContact
+                                    ) 
+                                }
+                            )
+                        }
                     }
                 }
             }
             if (contacts.isEmpty()) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text("No contacts yet. Invite a friend by clicking the share icon above.", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Text(strNoContacts, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
             }

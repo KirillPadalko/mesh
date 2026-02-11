@@ -3,7 +3,7 @@
     margin: 0 auto;
     padding: 20px;
     background: var(--background);
-    min-height: 100vh;
+    min-height: 100dvh;
 }
 
 .profile-header {
@@ -11,6 +11,7 @@
     align-items: center;
     gap: 16px;
     padding: 24px 0;
+    padding-top: max(24px, env(safe-area-inset-top));
     border-bottom: 1px solid var(--border);
     margin-bottom: 32px;
 }

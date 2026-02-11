@@ -64,11 +64,15 @@ export class ChatTransport implements WebSocketListener, WebRTCListener {
                     this.wsService.sendEncryptedMessage(peerId, encrypted);
                 }
             } else {
-                console.log(`Sending ${payload.type} via server to ${peerId}`);
+                console.log(`Sending ${payload.type} via server to ${peerId} (P2P not connected)`);
                 this.wsService.sendEncryptedMessage(peerId, encrypted);
 
-                // Try to establish P2P for future messages
-                this.webRTCManager.connectToPeer(peerId);
+                // Option: We could try to establish P2P for *future* messages,
+                // but doing it on every message sent might spam offers if the peer is truly offline.
+                // Better strategy: Only try to connect if we haven't tried recently or let a background process handle it.
+                // For now, let's NOT aggressively connect here to avoid the 'recipient_offline' error loop if they are offline.
+                // If they come online, they will send us an offer or we will eventually try again via a separate mechanism.
+                // this.webRTCManager.connectToPeer(peerId); 
             }
         } catch (error) {
             console.error('Error sending protocol message:', error);
@@ -113,6 +117,16 @@ export class ChatTransport implements WebSocketListener, WebRTCListener {
 
     private async handleIncomingMessage(fromMeshId: string, message: EncryptedMessage): Promise<void> {
         try {
+            // STRATEGY: "Upgrade on Incoming"
+            // If we receive a message via Server (which reaches here), it implies the peer is Online.
+            // Check if we already have a P2P connection. If not, trigger a connection attempt.
+            // We use a debounced check or simply rely on the manager's check (it handles duplicates).
+            if (!this.webRTCManager.isConnected(fromMeshId)) {
+                console.log(`[ChatTransport] Received message via Server from ${fromMeshId}. Triggering P2P upgrade.`);
+                // We assume 'connectToPeer' safely handles multiple calls (check internal map).
+                this.webRTCManager.connectToPeer(fromMeshId);
+            }
+
             const decryptedJson = await this.cryptoManager.decryptMessage(message, fromMeshId);
 
             // Try to parse as ProtocolPayload

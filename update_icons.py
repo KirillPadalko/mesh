@@ -2,7 +2,7 @@ import os
 from PIL import Image
 
 # Configuration
-SOURCE_IMAGE = r"C:/Users/Bob/.gemini/antigravity/brain/b5543c58-8996-4efb-b949-fa34f54216a9/uploaded_image_1766472487645.jpg"
+SOURCE_IMAGE = r"d:/DEV_DATA/mesh-client/mesh_icon_512_1767534347959.png"
 RES_DIR = r"d:/DEV_DATA/mesh-client/app/src/main/res"
 
 # Icon definition (density_name: size_px)
@@ -60,11 +60,12 @@ def process_icons():
         # Create a transparent canvas
         canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         
-        # Scale the image to ~70% of the canvas size to be safe
-        target_size = int(size * 0.7) 
+        # Scale the image to fill the canvas (100%)
+        # This ensures no borders are visible if the image is a full-bleed icon
+        target_size = size 
         resized = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
         
-        # Center the image
+        # Center the image (will be 0,0 since sizes match)
         x = (size - target_size) // 2
         y = (size - target_size) // 2
         

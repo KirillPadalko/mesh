@@ -20,4 +20,7 @@ interface MessageDao {
     
     @Query("SELECT * FROM messages ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLastMessage(): MessageEntity?
+
+    @Query("SELECT * FROM messages WHERE id = :id")
+    suspend fun getMessageById(id: Long): MessageEntity?
 }

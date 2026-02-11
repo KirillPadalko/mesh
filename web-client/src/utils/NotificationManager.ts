@@ -4,7 +4,7 @@
 export class NotificationManager {
     private static instance: NotificationManager;
     private permission: NotificationPermission = 'default';
-    private isWindowFocused = true;
+    // private isWindowFocused = true;
 
     private constructor() {
         // Check initial permission
@@ -12,14 +12,15 @@ export class NotificationManager {
             this.permission = Notification.permission;
         }
 
-        // Track window focus to avoid showing notifications when app is active
-        window.addEventListener('focus', () => {
-            this.isWindowFocused = true;
-        });
 
-        window.addEventListener('blur', () => {
-            this.isWindowFocused = false;
-        });
+        // Track window focus to avoid showing notifications when app is active
+        // window.addEventListener('focus', () => {
+        //     this.isWindowFocused = true;
+        // });
+
+        // window.addEventListener('blur', () => {
+        //     this.isWindowFocused = false;
+        // });
     }
 
     static getInstance(): NotificationManager {
@@ -68,10 +69,10 @@ export class NotificationManager {
         }
 
         // Don't show notification if window is focused and user is active
-        if (this.isWindowFocused && document.visibilityState === 'visible') {
-            console.log('Window is focused, skipping notification');
-            return;
-        }
+        // if (this.isWindowFocused && document.visibilityState === 'visible') {
+        //     console.log('Window is focused, skipping notification');
+        //     return;
+        // }
 
         try {
             // Try to use Service Worker for better notification management

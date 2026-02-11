@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
@@ -28,26 +29,56 @@ fun ProfileScreen(
     val meshScore by viewModel.meshScore.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     var showSeed by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
+    // String resources
+    val strProfile = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.profile)
+    val strBack = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.back)
+    val strYourMeshNode = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.your_mesh_node)
+    val strNickname = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.nickname)
+    val strSave = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.save)
+    val strEdit = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.edit)
+    val strTapToCopy = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.tap_to_copy)
+    val strIdCopied = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.id_copied)
+    val strMeshSignal = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.mesh_signal)
+    val strViewNetworkMap = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.view_network_map)
+    val strSecurity = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.security)
+    val strBackupIdentity = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.backup_identity)
+    val strShowPrivateSeedPhrase = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.show_private_seed_phrase)
+    val strShow = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.show)
+    val strHide = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.hide)
+    val strDoNotShareThis = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.do_not_share_this)
+    val strRecoveryPhrase = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.recovery_phrase)
+    val strSeedHexLegacy = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.seed_hex_legacy)
+    val strLoading = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.loading)
+    val strError = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.error)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Profile") },
+                title = { Text(strProfile) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strBack)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        val nick = viewModel.localNickname.value
+                        val id = viewModel.meshId.value
+                        com.mesh.client.utils.ShareUtils.shareInvite(context, id, nick)
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share Profile")
                     }
                 }
             )
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp)) {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            
             // Identity Card
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Your Mesh Node", style = MaterialTheme.typography.labelMedium)
+                    Text(strYourMeshNode, style = MaterialTheme.typography.labelMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     val localNickname by viewModel.localNickname.collectAsState()
@@ -60,14 +91,14 @@ fun ProfileScreen(
                                 value = editedName,
                                 onValueChange = { editedName = it },
                                 modifier = Modifier.weight(1f),
-                                label = { Text("Nickname") },
+                                label = { Text(strNickname) },
                                 singleLine = true
                             )
                             IconButton(onClick = {
                                 viewModel.updateLocalNickname(editedName.take(20)) // Limit length
                                 isEditing = false
                             }) {
-                                Icon(Icons.Default.Check, "Save")
+                                Icon(Icons.Default.Check, strSave)
                             }
                         }
                     } else {
@@ -81,13 +112,13 @@ fun ProfileScreen(
                                 editedName = localNickname
                                 isEditing = true
                             }) {
-                                Icon(Icons.Default.Edit, "Edit")
+                                Icon(Icons.Default.Edit, strEdit)
                             }
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    val displayId = meshId ?: "Loading..."
+                    val displayId = meshId ?: strLoading
                     Text(
                         text = displayId,
                         style = MaterialTheme.typography.bodyMedium,
@@ -95,12 +126,12 @@ fun ProfileScreen(
                         modifier = Modifier.clickable {
                             if (meshId != null) {
                                 clipboardManager.setText(AnnotatedString(meshId!!))
-                                android.widget.Toast.makeText(context, "ID Copied", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(context, strIdCopied, android.widget.Toast.LENGTH_SHORT).show()
                             }
                         }
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("(Tap to copy)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(strTapToCopy, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
@@ -113,7 +144,7 @@ fun ProfileScreen(
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Mesh Signal", style = MaterialTheme.typography.titleMedium)
+                    Text(strMeshSignal, style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     val level = viewModel.getSignalLevel(meshScore)
@@ -124,34 +155,28 @@ fun ProfileScreen(
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Level $level",
+                        text = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.level, level),
                         style = MaterialTheme.typography.titleLarge
                     )
                     Text(
-                        text = "Score: ${String.format("%.1f", meshScore)}",
+                        text = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.score, meshScore),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Button(onClick = onMap, modifier = Modifier.fillMaxWidth()) {
-                Text("View Network Map")
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
             Text("Security", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
             
             ListItem(
-                headlineContent = { Text("Backup Identity") },
-                supportingContent = { Text("Show your private seed phrase") },
+                headlineContent = { Text(strBackupIdentity) },
+                supportingContent = { Text(strShowPrivateSeedPhrase) },
                 trailingContent = {
                     Button(onClick = { showSeed = !showSeed }) {
-                        Text(if (showSeed) "Hide" else "Show")
+                        Text(if (showSeed) strHide else strShow)
                     }
                 }
             )
@@ -159,13 +184,13 @@ fun ProfileScreen(
             if (showSeed) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("DO NOT SHARE THIS", color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.titleSmall)
+                        Text(strDoNotShareThis, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.titleSmall)
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         val backup = viewModel.identityManager.exportMnemonic()
                         if (backup != null) {
                             // Show mnemonic in grid
-                            Text("Recovery Phrase:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text(strRecoveryPhrase, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                             Spacer(modifier = Modifier.height(8.dp))
                             val words = backup.split(" ")
                             words.chunked(3).forEach { rowWords ->
@@ -183,9 +208,9 @@ fun ProfileScreen(
                             }
                         } else {
                             // Legacy hex seed
-                            Text("Seed Hex (Legacy):", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text(strSeedHexLegacy, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                             Spacer(modifier = Modifier.height(8.dp))
-                            val seedHex = try { viewModel.identityManager.exportSeedHex() } catch(e:Exception){"Error"}
+                            val seedHex = try { viewModel.identityManager.exportSeedHex() } catch(e:Exception){strError}
                             SelectionContainer {
                                 Text(seedHex, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
                             }

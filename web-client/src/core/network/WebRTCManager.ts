@@ -142,7 +142,10 @@ export class WebRTCManager {
         };
 
         pc.oniceconnectionstatechange = () => {
-            console.log(`ICE connection state for ${peerId}: ${pc.iceConnectionState}`);
+            console.log(`[WebRTC] ICE state for ${peerId}: ${pc.iceConnectionState} (signaling: ${pc.signalingState})`);
+            if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                console.warn(`[WebRTC] Connection to ${peerId} failed/disconnected`);
+            }
         };
 
         return pc;

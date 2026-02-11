@@ -6,13 +6,16 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.mesh.client.data.db.dao.ContactDao
 import com.mesh.client.data.db.dao.MessageDao
+import com.mesh.client.data.db.dao.OutgoingMessageDao
 import com.mesh.client.data.db.entities.ContactEntity
 import com.mesh.client.data.db.entities.MessageEntity
+import com.mesh.client.data.db.entities.OutgoingMessageEntity
 
-@Database(entities = [ContactEntity::class, MessageEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ContactEntity::class, MessageEntity::class, OutgoingMessageEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun contactDao(): ContactDao
     abstract fun messageDao(): MessageDao
+    abstract fun outgoingMessageDao(): OutgoingMessageDao
 
     companion object {
         @Volatile

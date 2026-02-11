@@ -5,16 +5,19 @@ import com.mesh.client.crypto.CryptoManager
 import com.mesh.client.data.EncryptedMessage
 import com.mesh.client.network.WebRtcManager
 import com.mesh.client.network.WebSocketService
+import kotlinx.coroutines.launch
 
 class ChatTransport(
     private val cryptoManager: CryptoManager,
-    private val webRtcManager: WebRtcManager,
+    val webRtcManager: WebRtcManager,
     private val webSocketService: WebSocketService,
-    private val myMeshId: String
+    private val myMeshId: String,
+    private val outgoingDao: com.mesh.client.data.db.dao.OutgoingMessageDao,
+    private val scope: kotlinx.coroutines.CoroutineScope
 ) : WebSocketService.Listener, WebRtcManager.Listener {
 
     interface MessageListener {
-        fun onMessageReceived(fromMeshId: String, text: String, timestamp: Long)
+        fun onMessageReceived(fromMeshId: String, text: String, timestamp: Long, transportType: String)
         fun onMessageStatusChanged(peerId: String, isP2P: Boolean)
         
         // Protocol Events
@@ -23,14 +26,16 @@ class ChatTransport(
         fun onL2NotifyReceived(fromMeshId: String, notifyJson: String)
         
         fun onTransportError(message: String)
+        fun onIncomingCall(peerId: String)
+        fun onHangupReceived(peerId: String)
+        fun onMessageDelivered(msgId: String) // New: for UI feedback
     }
 
+    private val gson = com.google.gson.Gson()
     var messageListener: MessageListener? = null
+    private var isConnected = false
 
     init {
-        // Register as listener
-        // Register as listener
-        // webSocketService.listener = this // Moved to ViewModel to intercept connection status
         webRtcManager.listener = this
     }
 
@@ -38,112 +43,222 @@ class ChatTransport(
     
     fun sendMessage(peerId: String, plaintext: String) {
         val payload = com.mesh.client.data.ProtocolPayload("chat", plaintext)
-        sendProtocolPayload(peerId, payload)
+        enqueueMessage(peerId, payload)
+    }
+
+    fun startCall(peerId: String) {
+        // Ephemeral: try P2P first, then Server. No persistence.
+        val payload = com.mesh.client.data.ProtocolPayload("call", "audio")
+        sendEphemeral(peerId, payload)
+        
+        // Then establish WebRTC with audio track
+        webRtcManager.startCall(peerId)
+    }
+
+    fun sendHangup(peerId: String) {
+        val payload = com.mesh.client.data.ProtocolPayload("hangup", "ended")
+        sendEphemeral(peerId, payload)
+        webRtcManager.stopCall(peerId)
     }
     
     fun sendInvite(peerId: String, inviteJson: String) {
+        // Invites should be persistent
         val payload = com.mesh.client.data.ProtocolPayload("invite", inviteJson)
-        sendProtocolPayload(peerId, payload)
+        enqueueMessage(peerId, payload)
     }
     
     fun sendInviteAck(peerId: String, ackJson: String) {
+        // ACKs can be ephemeral or persistent. Let's make invite ACKs persistent to be safe.
         val payload = com.mesh.client.data.ProtocolPayload("invite_ack", ackJson)
-        sendProtocolPayload(peerId, payload)
+        enqueueMessage(peerId, payload)
     }
 
-    private fun sendProtocolPayload(peerId: String, payload: com.mesh.client.data.ProtocolPayload) {
+    private fun enqueueMessage(peerId: String, payload: com.mesh.client.data.ProtocolPayload) {
+        scope.launch {
+            try {
+                val payloadJson = gson.toJson(payload)
+                val encrypted = cryptoManager.encryptMessage(payloadJson, peerId)
+                val encryptedJson = gson.toJson(encrypted)
+                
+                val entity = com.mesh.client.data.db.entities.OutgoingMessageEntity(
+                    msgId = payload.msgId,
+                    toPeerId = peerId,
+                    encryptedJson = encryptedJson,
+                    createdAt = System.currentTimeMillis()
+                )
+                outgoingDao.insert(entity)
+                Log.d(TAG, "Enqueued message ${payload.msgId.take(8)} for $peerId")
+                
+                // Trigger sending immediately
+                processOutbox()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to enqueue message", e)
+                messageListener?.onTransportError("Failed to encrypt/queue message")
+            }
+        }
+    }
+    
+    fun processOutbox() {
+        scope.launch {
+            try {
+                val pending = outgoingDao.getAllPending()
+                if (pending.isEmpty()) return@launch
+                
+                Log.d(TAG, "Processing outbox: ${pending.size} messages")
+                
+                for (msg in pending) {
+                    // Strategy: Server-First for reliability
+                    // We send "server_message" via WebSocket.
+                    
+                    if (!isConnected) {
+                        Log.d(TAG, "Cannot process outbox - WS disconnected")
+                        break // Stop processing if no connection
+                    }
+
+                    try {
+                        val encrypted = gson.fromJson(msg.encryptedJson, EncryptedMessage::class.java)
+                        
+                        // Send via Server (Reliable channel)
+                        // Note: we pass msgId to the server envelope so we can get a persistent ACK
+                        val success = webSocketService.sendEncryptedMessage(msg.toPeerId, encrypted, msg.msgId)
+                        
+                        if (success) {
+                            Log.d(TAG, "Sent pending ${msg.msgId.take(8)} to server, waiting for release")
+                            // We do NOT delete here. We wait for delivery_ack or offline_storage confirmation from server.
+                        } else {
+                            Log.w(TAG, "Failed to write ${msg.msgId.take(8)} to WS buffer")
+                        }
+                        
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error sending pending message ${msg.msgId}", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing outbox", e)
+            }
+        }
+    }
+
+    private fun sendEphemeral(peerId: String, payload: com.mesh.client.data.ProtocolPayload) {
+        Log.i(TAG, "Sending ephemeral [${payload.type}] ID=${payload.msgId.take(8)} to $peerId")
         try {
-            val gson = com.google.gson.Gson()
             val payloadJson = gson.toJson(payload)
-            
-            // 1. Encrypt
             val encrypted = cryptoManager.encryptMessage(payloadJson, peerId)
 
-            // 2. Check Transport
+            // Try P2P first for ephemeral (latency sensitive)
             if (webRtcManager.isConnected(peerId)) {
-                Log.d(TAG, "Sending ${payload.type} via P2P to $peerId")
                 val sent = webRtcManager.sendP2PMessage(peerId, encrypted)
-                if (!sent) {
-                    // Fallback if send failed despite state check
-                    Log.w(TAG, "P2P send failed, fallback to server")
-                    webSocketService.sendEncryptedMessage(peerId, encrypted)
-                }
+                if (!sent) webSocketService.sendEncryptedMessage(peerId, encrypted)
             } else {
-                Log.d(TAG, "Sending ${payload.type} via Server to $peerId")
                 webSocketService.sendEncryptedMessage(peerId, encrypted)
-                // Try to establish P2P for future
-                webRtcManager.connectToPeer(peerId)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error sending protocol message", e)
-            messageListener?.onTransportError("Failed to send message: ${e.localizedMessage}")
+            Log.e(TAG, "Error sending ephemeral", e)
         }
     }
 
     // WebSocketService.Listener
     override fun onSignalingMessage(fromMeshId: String, type: String, payload: String?) {
+        Log.d(TAG, "Signal [${type}] from ${fromMeshId.take(8)}")
         try {
-            if (type == "error") {
-                val errorMsg = payload ?: "Unknown error"
-                Log.e(TAG, "Server error: $errorMsg")
-                messageListener?.onTransportError("Server error from $fromMeshId: $errorMsg")
-                return
-            }
+            if (type == "error") return
             webRtcManager.handleSignaling(fromMeshId, type, payload)
         } catch (e: Exception) {
             Log.e(TAG, "Error handling signaling", e)
-            messageListener?.onTransportError("Error handling signaling: ${e.localizedMessage}")
         }
     }
 
     override fun onEncryptedMessageReceived(fromMeshId: String, message: EncryptedMessage) {
-        handleIncomingMessage(fromMeshId, message)
+        handleIncomingMessage(fromMeshId, message, "SERVER")
+    }
+    
+    override fun onDeliveryAck(msgId: String, status: String) {
+        handleServerAck(msgId, status)
     }
     
     override fun onError(message: String) {
-        // Forward error to ViewModel for display
+        Log.e(TAG, "Transport Error: $message")
         messageListener?.onTransportError(message)
     }
 
     override fun onConnected() {
-        Log.d(TAG, "WS Connected")
+        Log.i(TAG, "Transport connected to Mesh Server")
+        isConnected = true
+        // Flush queue on reconnect
+        processOutbox()
     }
 
     override fun onDisconnected() {
-        Log.d(TAG, "WS Disconnected")
+        Log.w(TAG, "Transport disconnected from Mesh Server")
+        isConnected = false
     }
 
     // WebRtcManager.Listener
     override fun onP2PMessageReceived(fromMeshId: String, message: EncryptedMessage) {
-        handleIncomingMessage(fromMeshId, message)
+        handleIncomingMessage(fromMeshId, message, "P2P")
     }
 
     override fun onP2PConnectionStateChange(peerId: String, isConnected: Boolean) {
+        Log.i(TAG, "P2P State for ${peerId.take(8)}: $isConnected")
         messageListener?.onMessageStatusChanged(peerId, isConnected)
     }
 
-    private fun handleIncomingMessage(fromMeshId: String, message: EncryptedMessage) {
+    private fun handleIncomingMessage(fromMeshId: String, message: EncryptedMessage, source: String) {
+        // Decrypt... same as before
+        // But also check for delivery_ack inside? 
+        // No, delivery_ack comes as a separate signaling/protocol message usually, 
+        // OR as a payload inside an encrypted message?
+        // Wait, main.py sends 'delivery_ack' as a personal message (JSON).
+        // It is NOT encrypted as part of 'server_message' payload.
+        // It is a top-level message type like 'webrtc_offer'.
+        // So it comes via onSignalingMessage NO wait.
+        
+        // main.py calls manager.send_personal_message(ack).
+        // ACK is { type: "delivery_ack", ... }
+        // WebSocketService.kt sees "delivery_ack" in msgType.
+        // It falls into 'else' -> onSignalingMessage.
+        // So we need to handle "delivery_ack" in onSignalingMessage!
+        
         try {
             val decryptedJson = cryptoManager.decryptMessage(message, fromMeshId)
-            
-            // Try parse as ProtocolPayload
-            val gson = com.google.gson.Gson()
-            try {
-                val payload = gson.fromJson(decryptedJson, com.mesh.client.data.ProtocolPayload::class.java)
-                when (payload.type) {
-                    "chat" -> messageListener?.onMessageReceived(fromMeshId, payload.content, message.timestamp)
-                    "invite" -> messageListener?.onInviteReceived(fromMeshId, payload.content)
-                    "invite_ack" -> messageListener?.onInviteAckReceived(fromMeshId, payload.content)
-                    "l2_notify" -> messageListener?.onL2NotifyReceived(fromMeshId, payload.content)
-                    else -> Log.w(TAG, "Unknown protocol type: ${payload.type}")
-                }
+            val payload = try {
+                gson.fromJson(decryptedJson, com.mesh.client.data.ProtocolPayload::class.java)
             } catch (e: Exception) {
-                // Backward compatibility: assume plain text chat if parsing fails
-                Log.w(TAG, "Failed to parse ProtocolPayload, assuming legacy chat: ${e.message}")
-                messageListener?.onMessageReceived(fromMeshId, decryptedJson, message.timestamp)
+                com.mesh.client.data.ProtocolPayload("chat", decryptedJson)
+            }
+
+            Log.i(TAG, "Incoming [${payload.type}] ID=${payload.msgId.take(8)} from ${fromMeshId.take(8)}")
+            
+            // Auto-ACK for chat messages (Application Level ACK) purely for read receipt later
+            // For now we rely on Transport ACK.
+
+            when (payload.type) {
+                "chat" -> messageListener?.onMessageReceived(fromMeshId, payload.content, message.timestamp, source.lowercase())
+                "invite" -> messageListener?.onInviteReceived(fromMeshId, payload.content)
+                "invite_ack" -> messageListener?.onInviteAckReceived(fromMeshId, payload.content)
+                "l2_notify" -> messageListener?.onL2NotifyReceived(fromMeshId, payload.content)
+                "call" -> messageListener?.onIncomingCall(fromMeshId)
+                "hangup" -> {
+                    webRtcManager.stopCall(fromMeshId)
+                    messageListener?.onHangupReceived(fromMeshId)
+                }
+                else -> Log.w(TAG, "Unknown protocol type: ${payload.type}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Decryption or processing failed from $fromMeshId: ${e.message}")
+            Log.e(TAG, "Failed to process incoming message", e)
+        }
+    }
+    
+    // We also need to handle the Server Delivery ACK which comes via onSignalingMessage/Protocol
+    // See comment above.
+    
+    fun handleServerAck(msgId: String, status: String) {
+        scope.launch {
+            Log.d(TAG, "Server ACK for $msgId: $status")
+            // If delivered or stored_offline, we consider it "sent" from client perspective.
+            // We remove from outbox.
+            outgoingDao.delete(msgId)
+            messageListener?.onMessageDelivered(msgId)
         }
     }
 

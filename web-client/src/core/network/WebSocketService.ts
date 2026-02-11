@@ -34,7 +34,7 @@ export class WebSocketService {
             let wsUrl = `${protocol}//${host}/ws`;
 
             if (host.includes('localhost') || host.includes('127.0.0.1')) {
-                // Determine port - assume default backend port 8000/8001 for dev
+                // Determine port - assume default backend port 8001 for dev (matching docker-compose)
                 wsUrl = 'ws://localhost:8001/ws';
             }
 
@@ -51,20 +51,20 @@ export class WebSocketService {
                 this.handleMessage(event.data);
             };
 
-            this.ws.onclose = () => {
-                console.log('WebSocket disconnected');
+            this.ws.onclose = (event) => {
+                console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
                 this.listener?.onDisconnected();
                 this.stopPing();
                 this.scheduleReconnect();
             };
 
             this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
+                console.error('WebSocket error details:', error);
                 this.listener?.onError('WebSocket connection error');
             };
         } catch (error) {
             console.error('Failed to create WebSocket:', error);
-            this.listener?.onError('Failed to connect to server');
+            this.listener?.onError('Failed to connect to server: ' + error);
         }
     }
 
@@ -103,6 +103,15 @@ export class WebSocketService {
             const msg = JSON.parse(data);
 
             if (msg.type === 'error') {
+                // Special handling for recipient_offline:
+                // This error is returned when we try to send P2P signaling (OFFER/ICE) to an offline user.
+                // However, the actual chat message is sent in parallel via 'server_message', which
+                // includes offline storage. So, we should NOT treat this as a fatal error for the user.
+                if (msg.error === 'recipient_offline') {
+                    console.warn('Recipient is offline - standard message stored on server, logic P2P skipped.');
+                    return;
+                }
+
                 const errorMsg = msg.message || 'Server error';
                 console.warn('Server error:', errorMsg);
                 this.listener?.onError(errorMsg);

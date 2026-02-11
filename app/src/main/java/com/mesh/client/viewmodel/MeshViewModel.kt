@@ -46,7 +46,30 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as NetworkForegroundService.LocalBinder
             networkService = binder.getService()
-            _isConnected.value = true // Assume connected if service is running, or check service state
+            
+            networkService?.callListener = object : NetworkForegroundService.CallListener {
+                override fun onIncomingCall(peerId: String) {
+                    Log.d("MeshViewModel", "Incoming call from $peerId")
+                    if (_callState.value != CallState.IDLE) {
+                        Log.d("MeshViewModel", "Already in call/calling, ignoring incoming call")
+                        return
+                    }
+                    viewModelScope.launch {
+                        _currentCallPeerId.value = peerId
+                        _callState.value = CallState.INCOMING
+                    }
+                }
+
+                override fun onCallEnded() {
+                    Log.d("MeshViewModel", "Call ended by remote")
+                    viewModelScope.launch {
+                        _callState.value = CallState.IDLE
+                        _currentCallPeerId.value = null
+                    }
+                }
+            }
+            
+            _isConnected.value = true
             Log.d("MeshViewModel", "Service Bound")
 
         }
@@ -89,6 +112,17 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
     private val _errorEvents = MutableSharedFlow<String>()
     val errorEvents: SharedFlow<String> = _errorEvents
 
+    // Call State
+    // Call State
+    enum class CallState { IDLE, CALLING, INCOMING, CONNECTED }
+    private val _callState = MutableStateFlow(CallState.IDLE)
+    val callState: StateFlow<CallState> = _callState.asStateFlow()
+    
+    private val _currentCallPeerId = MutableStateFlow<String?>(null)
+    val currentCallPeerId: StateFlow<String?> = _currentCallPeerId.asStateFlow()
+    
+    private var callStartTime: Long = 0L
+
     init {
         checkIdentity()
         observeContacts()
@@ -126,6 +160,12 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
                  startNetworkService()
                  
                  processPendingInvite()
+                 
+                 // Check for deferred deep link invite
+                 inviteRedemptionManager.checkDeferredInvite(_meshId.value!!) { inviterId ->
+                     Log.i("MeshViewModel", "Deferred invite found from $inviterId")
+                     handleInvite(inviterId)
+                 }
              } else {
                  _meshId.value = null
              }
@@ -172,17 +212,44 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
     private var messageJob: Job? = null
     
     fun loadMessages(peerId: String) {
+        networkService?.activeChatPeerId = peerId
         messageJob?.cancel()
         messageJob = viewModelScope.launch {
-            // Mark as read immediately when loading
-            database.messageDao().markMessagesAsRead(peerId)
+            // We do NOT mark as read here immediately. The UI will trigger it.
             
             database.messageDao().getMessagesForPeer(peerId).collect { entities ->
                 _messages.value = entities.map { 
-                    LocalStorage.StoredMessage(it.peerId, it.isIncoming, it.text, it.timestamp) 
+                    LocalStorage.StoredMessage(
+                        it.id,
+                        it.peerId, 
+                        it.isIncoming, 
+                        it.text, 
+                        it.timestamp,
+                        it.transportType,
+                        it.reaction,
+                        it.replyToId,
+                        it.replyToText
+                    ) 
                 }
             }
         }
+    }
+
+    fun markAsRead(peerId: String) {
+        viewModelScope.launch {
+            database.messageDao().markMessagesAsRead(peerId)
+        }
+    }
+
+    fun clearActiveChat() {
+        networkService?.activeChatPeerId = null
+    }
+
+    fun updateP2PStatus(peerId: String, isP2P: Boolean) {
+        val currentMap = _p2pStatus.value.toMutableMap()
+        currentMap[peerId] = isP2P
+        _p2pStatus.value = currentMap
+        Log.d("MeshViewModel", "P2P status updated for ${peerId.take(8)}: $isP2P")
     }
 
     private fun refreshMessages(peerId: String) {
@@ -201,10 +268,77 @@ class MeshViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendMessage(toPeerId: String, text: String) {
-        networkService?.sendMessage(toPeerId, text)
+    fun sendMessage(toPeerId: String, text: String, replyToId: Long? = null, replyToText: String? = null) {
+        networkService?.sendMessage(toPeerId, text, replyToId, replyToText)
          // Optimistically update UI? The DB observer will handle it, but might be slight delay.
          // DB observer is fast enough.
+    }
+
+    fun reactToMessage(messageId: Long, emoji: String) {
+        viewModelScope.launch {
+             val msg = database.messageDao().getMessageById(messageId)
+             if (msg != null) {
+                 database.messageDao().insertMessage(msg.copy(reaction = emoji))
+             }
+        }
+    }
+
+    fun startCall(peerId: String) {
+        if (_callState.value != CallState.IDLE) return
+        
+        _currentCallPeerId.value = peerId
+        _callState.value = CallState.CONNECTED // Simplified: assume connected immediately for now as per previous step
+        callStartTime = System.currentTimeMillis()
+        
+        networkService?.startCall(peerId)
+    }
+    
+    fun endCall() {
+        val peerId = _currentCallPeerId.value ?: return
+        if (_callState.value == CallState.IDLE) return
+        
+        val durationMs = System.currentTimeMillis() - callStartTime
+        val seconds = (durationMs / 1000) % 60
+        val minutes = (durationMs / (1000 * 60)) % 60
+        val durationStr = String.format("%02d:%02d", minutes, seconds)
+        
+        val logMessage = "Audio call $durationStr"
+        
+        viewModelScope.launch {
+            database.messageDao().insertMessage(
+                 com.mesh.client.data.db.entities.MessageEntity(
+                     peerId = peerId,
+                     isIncoming = false, // outgoing call log
+                     text = logMessage,
+                     timestamp = System.currentTimeMillis(),
+                     status = "call_log"
+                 )
+            )
+        }
+
+        _callState.value = CallState.IDLE
+        _currentCallPeerId.value = null
+        networkService?.sendHangup(peerId)
+    }
+
+    fun acceptCall() {
+        val peerId = _currentCallPeerId.value ?: return
+        if (_callState.value != CallState.INCOMING) return
+        
+        _callState.value = CallState.CONNECTED
+        callStartTime = System.currentTimeMillis()
+        
+        // Start Audio
+        networkService?.startCall(peerId)
+    }
+
+    fun declineCall() {
+        val peerId = _currentCallPeerId.value
+        _callState.value = CallState.IDLE
+        _currentCallPeerId.value = null
+        if (peerId != null) {
+            networkService?.sendHangup(peerId)
+        }
     }
     
     fun addContact(peerId: String, nickname: String) {

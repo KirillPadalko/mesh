@@ -1,0 +1,30 @@
+.splash-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    height: 100dvh; /* Mobile viewport fix */
+    background-color: var(--background);
+    flex-direction: column;
+    gap: 20px;
+}
+
+.splash-logo {
+    width: min(150px, 40vw);
+    height: min(150px, 40vw);
+    object-fit: contain;
+    border-radius: 20px; /* In case it's a square icon that looks sharp */
+}
+
+.splash-text {
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}

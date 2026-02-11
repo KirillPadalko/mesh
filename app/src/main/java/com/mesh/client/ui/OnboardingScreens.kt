@@ -11,6 +11,13 @@ import com.mesh.client.viewmodel.MeshViewModel
 import kotlinx.coroutines.delay
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
+import androidx.compose.ui.unit.sp
+
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 
 @Composable
 fun SplashScreen(
@@ -28,16 +35,28 @@ fun SplashScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // Updated to use the generated splash logo
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(id = com.mesh.client.R.drawable.splash_logo),
-                contentDescription = "Mesh Logo",
-                modifier = Modifier.size(120.dp)
+            // Logo
+            Image(
+                 painter = painterResource(id = com.mesh.client.R.drawable.call_logo),
+                 contentDescription = "Logo",
+                 modifier = Modifier.size(120.dp).clip(CircleShape)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.mesh),
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    letterSpacing = 8.sp,
+                    color = Color.White
+                )
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Connecting to Mesh...", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                androidx.compose.ui.res.stringResource(com.mesh.client.R.string.app_tagline),
+                style = MaterialTheme.typography.bodyMedium.copy(color = Color.White.copy(alpha = 0.7f))
+            )
         }
     }
 }
@@ -103,19 +122,19 @@ fun OnboardingScreen(viewModel: MeshViewModel, onComplete: () -> Unit) {
 @Composable
 private fun WelcomeStep(onCreate: () -> Unit, onRestore: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Mesh", style = MaterialTheme.typography.displayMedium)
+        Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.mesh), style = MaterialTheme.typography.displayMedium)
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            "Mesh creates a personal node for you in the network.\nNo phone number.\nNo account.",
+            androidx.compose.ui.res.stringResource(com.mesh.client.R.string.onboarding_description),
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(48.dp))
         Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
-            Text("Create New Account")
+            Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.create_new_account))
         }
         Spacer(modifier = Modifier.height(16.dp))
         TextButton(onClick = onRestore) {
-            Text("I have a Seed Phrase")
+            Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.i_have_seed_phrase))
         }
     }
 }
@@ -123,10 +142,10 @@ private fun WelcomeStep(onCreate: () -> Unit, onRestore: () -> Unit) {
 @Composable
 private fun SeedDisplayStep(seed: String, onNext: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Your Recovery Phrase", style = MaterialTheme.typography.headlineMedium)
+        Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.your_recovery_phrase), style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "Write down these 12 words in order. This is the ONLY way to recover your account.",
+            androidx.compose.ui.res.stringResource(com.mesh.client.R.string.recovery_phrase_warning),
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.error
         )
@@ -153,7 +172,7 @@ private fun SeedDisplayStep(seed: String, onNext: () -> Unit) {
         
         Spacer(modifier = Modifier.height(48.dp))
         Button(onClick = onNext) {
-            Text("I have saved it")
+            Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.i_have_saved_it))
         }
     }
 }
@@ -161,15 +180,15 @@ private fun SeedDisplayStep(seed: String, onNext: () -> Unit) {
 @Composable
 private fun WarningStep(onFinish: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Are you sure?", style = MaterialTheme.typography.headlineSmall)
+        Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.are_you_sure), style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "If you lose your recovery phrase, you lose your identity forever.",
+            androidx.compose.ui.res.stringResource(com.mesh.client.R.string.lose_phrase_warning),
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(48.dp))
         Button(onClick = onFinish) {
-            Text("Yes, I understand")
+            Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.yes_i_understand))
         }
     }
 }
@@ -179,8 +198,10 @@ private fun RestoreStep(onRestore: (String) -> Unit, onBack: () -> Unit) {
     var text by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
+    val strMustBe12Words = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.must_be_12_words)
+    
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Restore Identity", style = MaterialTheme.typography.headlineMedium)
+        Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.restore_identity), style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(24.dp))
         OutlinedTextField(
             value = text,
@@ -188,14 +209,14 @@ private fun RestoreStep(onRestore: (String) -> Unit, onBack: () -> Unit) {
                 text = it
                 errorMessage = null
             },
-            label = { Text("Enter 12-word recovery phrase") },
+            label = { Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.enter_recovery_phrase)) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
             supportingText = { 
                 if (errorMessage != null) {
                     Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
                 } else {
-                    Text("Separate words with spaces")
+                    Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.separate_words_with_spaces))
                 }
             },
             isError = errorMessage != null
@@ -206,7 +227,7 @@ private fun RestoreStep(onRestore: (String) -> Unit, onBack: () -> Unit) {
                 val trimmed = text.trim()
                 val wordCount = trimmed.split("\\s+".toRegex()).size
                 if (wordCount != 12) {
-                    errorMessage = "Must be exactly 12 words"
+                    errorMessage = strMustBe12Words
                 } else {
                     onRestore(trimmed)
                 }
@@ -214,11 +235,11 @@ private fun RestoreStep(onRestore: (String) -> Unit, onBack: () -> Unit) {
             enabled = text.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Restore")
+            Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.restore))
         }
         Spacer(modifier = Modifier.height(16.dp))
         TextButton(onClick = onBack) {
-            Text("Back")
+            Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.back))
         }
     }
 }
@@ -228,10 +249,10 @@ private fun NicknameStep(onNext: (String) -> Unit) {
     var nickname by remember { mutableStateOf("") }
     
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Choose a Nickname", style = MaterialTheme.typography.headlineMedium)
+        Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.choose_nickname), style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "This is how you will appear to your contacts locally.",
+            androidx.compose.ui.res.stringResource(com.mesh.client.R.string.nickname_description),
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(24.dp))
@@ -239,7 +260,7 @@ private fun NicknameStep(onNext: (String) -> Unit) {
         OutlinedTextField(
             value = nickname,
             onValueChange = { nickname = it },
-            label = { Text("Nickname") },
+            label = { Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.nickname)) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -250,7 +271,7 @@ private fun NicknameStep(onNext: (String) -> Unit) {
             onClick = { onNext(nickname.trim().ifEmpty { "User" }) },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Next")
+            Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.next))
         }
     }
 }

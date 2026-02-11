@@ -10,14 +10,14 @@ object ShareUtils {
         // Use production domain instead of IP address
         val baseUrl = "https://mesh-online.org" 
         val encodedNickname = if (nickname != null) java.net.URLEncoder.encode(nickname, "UTF-8") else ""
-        val link = "$baseUrl/invite/$meshId?n=$encodedNickname"
+        val link = "$baseUrl/invite/$meshId?nickname=$encodedNickname"
         
         val sendIntent = Intent().apply {
             action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, "Let's chat on Mesh! $link")
+            putExtra(Intent.EXTRA_TEXT, context.getString(com.mesh.client.R.string.invite_message, link))
             type = "text/plain"
         }
-        val shareIntent = Intent.createChooser(sendIntent, "Invite Friend via")
+        val shareIntent = Intent.createChooser(sendIntent, context.getString(com.mesh.client.R.string.invite_chooser_title))
         // Verify that the intent resolves to an activity
         if (sendIntent.resolveActivity(context.packageManager) != null) {
             context.startActivity(shareIntent)

@@ -3,6 +3,12 @@ package com.mesh.client.data
 import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * Manager for handling invite redemption flow.
@@ -95,6 +101,57 @@ class InviteRedemptionManager(private val context: Context) {
             gson.fromJson(json, type) ?: emptySet()
         } catch (e: Exception) {
             emptySet()
+        }
+    }
+
+
+
+    /**
+     * Check for deferred deep link invite on the server.
+     * Should be called once after identity creation.
+     */
+    fun checkDeferredInvite(myMeshId: String, onFound: (inviterId: String) -> Unit) {
+        if (prefs.getBoolean("deferred_link_checked", false)) {
+            android.util.Log.d("InviteRedemptionManager", "Deferred link check skipped: already checked.")
+            return
+        }
+
+        val serverUrl = com.mesh.client.BuildConfig.SERVER_URL.replace("wss://", "https://")
+        val client = okhttp3.OkHttpClient()
+        
+        val json = """{"new_user_id": "$myMeshId"}"""
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+        val body = json.toRequestBody(mediaType)
+        
+        val request = okhttp3.Request.Builder()
+            .url("$serverUrl/install/claim")
+            .post(body)
+            .build()
+            
+        // Run in background
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val respBody = response.body?.string()
+                        if (respBody != null) {
+                            val jsonResp = com.google.gson.JsonParser.parseString(respBody).asJsonObject
+                            if (jsonResp.has("status") && jsonResp.get("status").asString == "claimed") {
+                                val inviterId = jsonResp.get("inviter_id").asString
+                                withContext(Dispatchers.Main) {
+                                    onFound(inviterId)
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore network errors, silent fail
+                e.printStackTrace()
+            } finally {
+                // Mark checked prevents repeated spamming
+                prefs.edit().putBoolean("deferred_link_checked", true).apply()
+            }
         }
     }
 }

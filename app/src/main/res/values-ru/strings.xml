@@ -1,0 +1,95 @@
+<resources>
+    <!-- App Info -->
+    <string name="app_name">Mesh</string>
+    <string name="app_tagline">Децентрализованный мессенджер</string>
+    
+    <!-- Home Screen -->
+    <string name="add_contact">Добавить контакт</string>
+    <string name="profile">Профиль</string>
+    <string name="invite_friend">Пригласить друга</string>
+    <string name="add_contact_dialog_title">Добавить контакт по ID</string>
+    <string name="enter_mesh_id">Введите Mesh ID</string>
+    <string name="add">Добавить</string>
+    <string name="cancel">Отмена</string>
+    <string name="save">Сохранить</string>
+    <string name="rename_contact">Переименовать контакт</string>
+    <string name="new_nickname">Новое имя</string>
+    <string name="delete_contact">Удалить контакт</string>
+    <string name="no_contacts_message">Пока нет контактов. Пригласите друга, нажав на иконку отправки выше.</string>
+    
+    <!-- Chat Screen -->
+    <string name="message_placeholder">Сообщение…</string>
+    <string name="send">Отправить</string>
+    <string name="back">Назад</string>
+    <string name="call">Позвонить</string>
+    <string name="direct_connection">Прямое соединение</string>
+    <string name="relayed_via_network">Через сеть</string>
+    <string name="react_to_message">Реакция на сообщение</string>
+    <string name="reply">Ответить</string>
+    <string name="replying_to">Ответ на:</string>
+    <string name="cancel_reply">Отменить ответ</string>
+    
+    <!-- Call Screen -->
+    <string name="incoming_call">Входящий вызов…</string>
+    <string name="decline">Отклонить</string>
+    <string name="accept">Принять</string>
+    <string name="end_call">Завершить звонок</string>
+    <string name="mesh_logo">Логотип Mesh</string>
+    
+    <!-- Onboarding -->
+    <string name="mesh">Mesh</string>
+    <string name="onboarding_description">Mesh создает персональный узел для вас в сети.\nБез номера телефона.\nБез аккаунта.</string>
+    <string name="create_new_account">Создать новый аккаунт</string>
+    <string name="i_have_seed_phrase">У меня есть seed-фраза</string>
+    <string name="choose_nickname">Выберите имя</string>
+    <string name="nickname_description">Так вы будете отображаться в контактах локально.</string>
+    <string name="nickname">Имя</string>
+    <string name="next">Далее</string>
+    <string name="your_recovery_phrase">Ваша фраза восстановления</string>
+    <string name="recovery_phrase_warning">Запишите эти 12 слов по порядку. Это ЕДИНСТВЕННЫЙ способ восстановить ваш аккаунт.</string>
+    <string name="i_have_saved_it">Я сохранил</string>
+    <string name="are_you_sure">Вы уверены?</string>
+    <string name="lose_phrase_warning">Если вы потеряете фразу восстановления, вы потеряете свою личность навсегда.</string>
+    <string name="yes_i_understand">Да, я понимаю</string>
+    <string name="restore_identity">Восстановить личность</string>
+    <string name="enter_recovery_phrase">Введите 12-словную фразу восстановления</string>
+    <string name="separate_words_with_spaces">Разделяйте слова пробелами</string>
+    <string name="must_be_12_words">Должно быть ровно 12 слов</string>
+    <string name="restore">Восстановить</string>
+    
+    <!-- Profile Screen -->
+    <string name="your_mesh_node">Ваш узел Mesh</string>
+    <string name="edit">Изменить</string>
+    <string name="tap_to_copy">(Нажмите, чтобы скопировать)</string>
+    <string name="id_copied">ID скопирован</string>
+    <string name="mesh_signal">Сигнал Mesh</string>
+    <string name="level">Уровень %1$d</string>
+    <string name="score">Счёт: %1$.1f</string>
+    <string name="view_network_map">Просмотреть карту сети</string>
+    <string name="security">Безопасность</string>
+    <string name="backup_identity">Резервная копия личности</string>
+    <string name="show_private_seed_phrase">Показать вашу приватную seed-фразу</string>
+    <string name="show">Показать</string>
+    <string name="hide">Скрыть</string>
+    <string name="do_not_share_this">НЕ ДЕЛИТЕСЬ ЭТИМ</string>
+    <string name="recovery_phrase">Фраза восстановления:</string>
+    <string name="seed_hex_legacy">Seed Hex (устаревший):</string>
+    
+    <!-- Map Screen -->
+    <string name="nodes">Узлов: %1$d</string>
+    
+    <!-- Notifications -->
+    <string name="connected_to_mesh">Подключено к сети Mesh</string>
+    <string name="incoming_call_notification">Входящий вызов</string>
+    <string name="new_l2_connection">Новое подключение L2</string>
+    <string name="discovered_via">Обнаружено через %1$s</string>
+    
+    <!-- Share -->
+    <string name="invite_message">Давай общаться в Mesh! %1$s</string>
+    <string name="invite_chooser_title">Пригласить друга через</string>
+    
+    <!-- General -->
+    <string name="user_prefix">Пользователь %1$s</string>
+    <string name="loading">Загрузка…</string>
+    <string name="error">Ошибка</string>
+</resources>

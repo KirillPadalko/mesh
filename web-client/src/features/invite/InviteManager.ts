@@ -56,6 +56,9 @@ export class InviteManager {
 
         // Store invite
         this.graphManager.storeReceivedInvite(invite);
+        if (invite.nickname) {
+            this.graphManager.setNickname(invite.from, invite.nickname);
+        }
 
         // Create ACK
         const timestamp = Date.now();
@@ -111,6 +114,12 @@ export class InviteManager {
         if (!isValid) {
             console.error('Invalid ACK signature');
             return false;
+        }
+
+        // Save connection and nickname
+        await this.graphManager.addL1Connection(ack.from);
+        if (ack.nickname) {
+            this.graphManager.setNickname(ack.from, ack.nickname);
         }
 
         return true;

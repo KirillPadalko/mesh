@@ -31,14 +31,17 @@ fun MeshMapScreen(
     
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    
+    // String resources
+    val strBack = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.back)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mesh Network Map") },
+                title = { Text(androidx.compose.ui.res.stringResource(com.mesh.client.R.string.view_network_map)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strBack)
                     }
                 }
             )
@@ -141,7 +144,7 @@ fun MeshMapScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha=0.8f))
             ) {
                 Text(
-                    text = "Nodes: ${1 + l1.size + l2.values.sumOf { it.size }}", 
+                    text = androidx.compose.ui.res.stringResource(com.mesh.client.R.string.nodes, 1 + l1.size + l2.values.sumOf { it.size }), 
                     modifier = Modifier.padding(8.dp),
                     style = MaterialTheme.typography.bodySmall
                 )

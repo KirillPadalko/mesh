@@ -5,6 +5,7 @@ interface MeshGraph {
     l2Connections: Map<string, Set<string>>;
     processedHashes: Set<string>;
     receivedInvites: Map<string, Invite>;
+    nicknames: Map<string, string>; // Store meshId -> nickname
 }
 
 export class MeshGraphManager {
@@ -25,6 +26,7 @@ export class MeshGraphManager {
                 l2Connections: new Map(),
                 processedHashes: new Set(),
                 receivedInvites: new Map(),
+                nicknames: new Map(),
             };
         }
 
@@ -40,6 +42,7 @@ export class MeshGraphManager {
                 ),
                 processedHashes: new Set(data.processedHashes || []),
                 receivedInvites: new Map(Object.entries(data.receivedInvites || {})),
+                nicknames: new Map(Object.entries(data.nicknames || {})),
             };
         } catch (error) {
             console.error('Failed to load mesh graph:', error);
@@ -48,6 +51,7 @@ export class MeshGraphManager {
                 l2Connections: new Map(),
                 processedHashes: new Set(),
                 receivedInvites: new Map(),
+                nicknames: new Map(),
             };
         }
     }
@@ -63,6 +67,7 @@ export class MeshGraphManager {
             ),
             processedHashes: Array.from(this.graph.processedHashes),
             receivedInvites: Object.fromEntries(this.graph.receivedInvites),
+            nicknames: Object.fromEntries(this.graph.nicknames),
         };
 
         localStorage.setItem(MeshGraphManager.STORAGE_KEY, JSON.stringify(data));
@@ -136,6 +141,11 @@ export class MeshGraphManager {
         this.listeners[event].push(callback);
     }
 
+    off(event: string, callback: (data: any) => void) {
+        if (!this.listeners[event]) return;
+        this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+    }
+
     private emit(event: string, data: any) {
         if (this.listeners[event]) {
             this.listeners[event].forEach(cb => cb(data));
@@ -181,6 +191,17 @@ export class MeshGraphManager {
 
     isHashProcessed(hash: string): boolean {
         return this.graph.processedHashes.has(hash);
+    }
+
+    setNickname(meshId: string, nickname: string): void {
+        if (!nickname) return;
+        this.graph.nicknames.set(meshId, nickname);
+        this.saveGraph();
+        this.emit('nickname-update', { meshId, nickname });
+    }
+
+    getNickname(meshId: string): string | undefined {
+        return this.graph.nicknames.get(meshId);
     }
 }
 

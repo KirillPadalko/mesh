@@ -22,10 +22,26 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.os.PowerManager
 
 class NetworkForegroundService : Service() {
 
+    interface CallListener {
+        fun onIncomingCall(peerId: String)
+        fun onCallEnded()
+    }
+
+    interface P2PStatusListener {
+        fun onP2PStatusChanged(peerId: String, isP2P: Boolean)
+    }
+
     private val binder = LocalBinder()
+    var callListener: CallListener? = null
+    var p2pStatusListener: P2PStatusListener? = null
     var webSocketService: WebSocketService? = null
         private set
     var chatTransport: ChatTransport? = null
@@ -35,11 +51,17 @@ class NetworkForegroundService : Service() {
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
     
+    // UI Tracking
+    var activeChatPeerId: String? = null
+    
     // Dependencies
     private lateinit var database: AppDatabase
     private lateinit var identityManager: IdentityManager
     private lateinit var graphManager: com.mesh.client.data.MeshGraphManager
     private lateinit var inviteManager: com.mesh.client.data.InviteManager
+    
+    // WakeLock to keep CPU running
+    private var wakeLock: PowerManager.WakeLock? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): NetworkForegroundService = this@NetworkForegroundService
@@ -52,6 +74,49 @@ class NetworkForegroundService : Service() {
         graphManager = com.mesh.client.data.MeshGraphManager(this)
         val signer = com.mesh.client.crypto.MeshSigner(identityManager)
         inviteManager = com.mesh.client.data.InviteManager(identityManager, signer, graphManager, database.contactDao())
+        
+        startNetworkMonitor()
+        acquireWakeLock()
+    }
+    
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Mesh:NetworkKeepAlive")
+            wakeLock?.setReferenceCounted(false)
+        }
+        if (wakeLock?.isHeld == false) {
+            wakeLock?.acquire()
+            Log.d("NetworkService", "WakeLock acquired")
+        }
+    }
+    
+    private fun releaseWakeLock() {
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+            Log.d("NetworkService", "WakeLock released")
+        }
+    }
+
+    private fun startNetworkMonitor() {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val request = android.net.NetworkRequest.Builder()
+            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+
+        connectivityManager.registerNetworkCallback(request, object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                Log.i("NetworkService", "Network Available: $network")
+                // Force Re-connect WebSocket 
+                webSocketService?.reconnect()
+                // Restart P2P connections to handle IP change
+                chatTransport?.webRtcManager?.restartAllIce()
+            }
+
+            override fun onLost(network: android.net.Network) {
+                Log.w("NetworkService", "Network Lost: $network")
+            }
+        })
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -67,20 +132,40 @@ class NetworkForegroundService : Service() {
         return START_STICKY
     }
 
+    private var currentMeshId: String? = null
+
     private fun initStack(meshId: String) {
-        if (webSocketService == null || webSocketService?.disconnect() == Unit) {
-             webSocketService = WebSocketService(com.mesh.client.BuildConfig.SERVER_URL + "/ws", meshId)
-             
-             // Initialize Transport Stack
-             val rtcManager = WebRtcManager(this, webSocketService!!, meshId)
-             val cryptoManager = CryptoManager(identityManager)
-             
-             chatTransport = ChatTransport(cryptoManager, rtcManager, webSocketService!!, meshId)
-             
-             setupListeners(meshId)
-             
+        if (webSocketService != null && currentMeshId == meshId) {
+             Log.d("NetworkService", "Stack already initialized for $meshId")
+             // Ensure connected
              webSocketService?.connect()
+             return
         }
+        
+        Log.d("NetworkService", "Initializing Stack for $meshId")
+        
+        // Teardown existing
+        webSocketService?.disconnect()
+        
+        currentMeshId = meshId
+        webSocketService = WebSocketService(com.mesh.client.BuildConfig.SERVER_URL + "/ws", meshId)
+             
+        // Initialize Transport Stack
+        val rtcManager = WebRtcManager(this, webSocketService!!, meshId)
+        val cryptoManager = CryptoManager(identityManager)
+             
+        chatTransport = ChatTransport(
+            cryptoManager, 
+            rtcManager, 
+            webSocketService!!, 
+            meshId,
+            database.outgoingMessageDao(),
+            serviceScope
+        )
+             
+        setupListeners(meshId)
+             
+        webSocketService?.connect()
     }
     
     private fun setupListeners(myMeshId: String) {
@@ -88,33 +173,37 @@ class NetworkForegroundService : Service() {
         val ws = webSocketService ?: return
         
         transport.messageListener = object : ChatTransport.MessageListener {
-            override fun onMessageReceived(fromMeshId: String, text: String, timestamp: Long) {
+            override fun onMessageReceived(fromMeshId: String, text: String, timestamp: Long, transportType: String) {
                  serviceScope.launch {
+                     // Ensure Contact First
+                     ensureContact(fromMeshId)
+
                      // Save to DB
                      val msg = MessageEntity(
                          peerId = fromMeshId,
                          isIncoming = true,
                          text = text,
-                         timestamp = timestamp,
-                         status = "received" // Default to received, will be marked read when opened
+                         timestamp = System.currentTimeMillis(), // Use local time as per user request
+                         status = "received",
+                         transportType = transportType
                      )
                      database.messageDao().insertMessage(msg)
-                     
-                     // Ensure Contact
-                     ensureContact(fromMeshId)
 
-                     // Show Notification
-                     val contact = database.contactDao().getContact(fromMeshId)
-                     val notificationHelper = com.mesh.client.utils.NotificationHelper(this@NetworkForegroundService)
-                     val contactName = contact?.nickname ?: "User ${fromMeshId.take(4)}"
-                     notificationHelper.showNotification(contactName, text)
+                     // Show Notification ONLY if chat with this user is NOT currently open
+                     if (fromMeshId != activeChatPeerId) {
+                         val contact = database.contactDao().getContact(fromMeshId)
+                         val notificationHelper = com.mesh.client.utils.NotificationHelper(this@NetworkForegroundService)
+                         val contactName = contact?.nickname ?: getString(com.mesh.client.R.string.user_prefix, fromMeshId.take(4))
+                         notificationHelper.showNotification(contactName, text)
+                     } else {
+                         Log.d("NetworkService", "Skipping notification for active chat with $fromMeshId")
+                     }
                  }
             }
 
             override fun onMessageStatusChanged(peerId: String, isP2P: Boolean) {
-                // Broadcast or Flow update? 
-                // For now, UI polls or we use a SharedFlow singleton if needed.
-                // Keeping it simple.
+                Log.d("NetworkService", "P2P status changed for ${peerId.take(8)}: $isP2P")
+                p2pStatusListener?.onP2PStatusChanged(peerId, isP2P)
             }
             
             override fun onInviteReceived(fromMeshId: String, inviteJson: String) {
@@ -158,9 +247,12 @@ class NetworkForegroundService : Service() {
                             
                             // Show notification for L2 discovery
                             val contact = database.contactDao().getContact(fromMeshId)
-                            val viaContact = contact?.nickname ?: "User ${fromMeshId.take(4)}"
+                            val viaContact = contact?.nickname ?: getString(com.mesh.client.R.string.user_prefix, fromMeshId.take(4))
                             val notificationHelper = com.mesh.client.utils.NotificationHelper(this@NetworkForegroundService)
-                            notificationHelper.showNotification("New L2 Connection", "Discovered via $viaContact")
+                            notificationHelper.showNotification(
+                                getString(com.mesh.client.R.string.new_l2_connection),
+                                getString(com.mesh.client.R.string.discovered_via, viaContact)
+                            )
                         }
                     } catch (e: Exception) {
                         Log.e("NetworkService", "Error processing L2 notify", e)
@@ -171,6 +263,29 @@ class NetworkForegroundService : Service() {
             override fun onTransportError(message: String) {
                 Log.e("NetworkService", "Transport Error: $message")
             }
+            
+            override fun onIncomingCall(peerId: String) {
+                serviceScope.launch {
+                     Log.i("NetworkService", "Incoming Call from $peerId")
+                     callListener?.onIncomingCall(peerId)
+                     
+                     // Also show notification
+                     val contact = database.contactDao().getContact(peerId)
+                     val name = contact?.nickname ?: getString(com.mesh.client.R.string.user_prefix, peerId.take(4))
+                     val notificationHelper = com.mesh.client.utils.NotificationHelper(this@NetworkForegroundService)
+                     notificationHelper.showCallNotification(name, getString(com.mesh.client.R.string.incoming_call_notification))
+                }
+            }
+
+            override fun onHangupReceived(peerId: String) {
+                Log.i("NetworkService", "Hangup received for $peerId")
+                callListener?.onCallEnded()
+            }
+
+            override fun onMessageDelivered(msgId: String) {
+                Log.d("NetworkService", "Message $msgId confirmed via P2P ACK")
+                // Here we could update DB status to "delivered_p2p" if needed
+            }
         }
         
         ws.listener = object : WebSocketService.Listener {
@@ -179,6 +294,9 @@ class NetworkForegroundService : Service() {
             }
             override fun onEncryptedMessageReceived(fromMeshId: String, message: com.mesh.client.data.EncryptedMessage) {
                 transport.onEncryptedMessageReceived(fromMeshId, message)
+            }
+            override fun onDeliveryAck(msgId: String, status: String) {
+                transport.handleServerAck(msgId, status)
             }
             override fun onConnected() {
                 transport.onConnected()
@@ -194,7 +312,7 @@ class NetworkForegroundService : Service() {
     
     private suspend fun ensureContact(meshId: String, nickname: String? = null) {
         val existing = database.contactDao().getContact(meshId)
-        val newNick = nickname ?: "User ${meshId.take(4)}"
+        val newNick = nickname ?: getString(com.mesh.client.R.string.user_prefix, meshId.take(4))
 
         if (existing == null) {
             database.contactDao().insertContact(
@@ -210,9 +328,13 @@ class NetworkForegroundService : Service() {
         }
     }
     
-    fun sendMessage(toPeerId: String, text: String) {
+    fun sendMessage(toPeerId: String, text: String, replyToId: Long? = null, replyToText: String? = null) {
         serviceScope.launch {
-            chatTransport?.sendMessage(toPeerId, text)
+            val tc = chatTransport ?: return@launch
+            val isP2p = tc.webRtcManager.isConnected(toPeerId)
+            val transportType = if (isP2p) "p2p" else "server"
+
+            tc.sendMessage(toPeerId, text)
             // Save outgoing
             database.messageDao().insertMessage(
                 MessageEntity(
@@ -220,9 +342,24 @@ class NetworkForegroundService : Service() {
                     isIncoming = false,
                     text = text,
                     timestamp = System.currentTimeMillis(),
-                    status = "sent"
+                    status = "sent",
+                    transportType = transportType,
+                    replyToId = replyToId,
+                    replyToText = replyToText
                 )
             )
+        }
+    }
+
+    fun startCall(toPeerId: String) {
+        serviceScope.launch {
+            chatTransport?.startCall(toPeerId)
+        }
+    }
+
+    fun sendHangup(toPeerId: String) {
+        serviceScope.launch {
+            chatTransport?.sendHangup(toPeerId)
         }
     }
     
@@ -248,8 +385,8 @@ class NetworkForegroundService : Service() {
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Mesh")
-            .setContentText("Connected to Mesh network")
+            .setContentTitle(getString(com.mesh.client.R.string.app_name))
+            .setContentText(getString(com.mesh.client.R.string.connected_to_mesh))
             .setSmallIcon(android.R.drawable.ic_dialog_info) 
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -261,6 +398,7 @@ class NetworkForegroundService : Service() {
         super.onDestroy()
         webSocketService?.disconnect()
         serviceJob.cancel()
+        releaseWakeLock()
     }
 }
 
